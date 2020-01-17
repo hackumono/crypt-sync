@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
-vim src/{cryptor,crypt_encoder,util,crypt_syncer,crypt_file,clargs,main}.rs Cargo.toml &&
+function get-src {
+  fd . src/ --type file |
+    rg -i "$1"
+}
+
+vim $(get-src "$1") &&
   cargo fmt &&
-  cargo test
+  cargo check

@@ -1,15 +1,24 @@
 use openssl::symm::{Cipher, Crypter, Mode};
 use std::io::{Error, ErrorKind, Read, Write};
 
+/// This trait helps make the encoding logic more functional.
+///
+/// Since `CryptEncoder` itself implements the `Read` trait, any struct that
+/// impls the `Read` trait can be wrapped by in an arbitrarily many layers
+/// of `CryptEncoder`s. The goal is to string together encoders much like
+/// function compopsition.
+///
+/// For example encrypting the compressed content of a file may look something like
+/// `Encryptor::wrap(Compressor::wrap(some_file))`.
 pub trait CryptEncoder<T>: Read
 where
     T: Read,
 {
     /// Wrap another struct that implements `std::io::Read`.
     ///
-    /// The idea is to use this wrapping functionality much like a function
-    /// composition, so that we can do something like `source` is identical to
-    /// `Decryptor::wrap(Encryptor::wrap(source, _), _)`.
+    /// # Parameters
+    /// 1. `source`
+    /// 1. `key`
     fn wrap(source: T, key: Option<&[u8]>) -> Result<Self, Error>
     where
         Self: std::marker::Sized;
@@ -34,5 +43,11 @@ where
             }
         }
         Ok(count)
+    }
+
+    fn all_to_vec(&mut self) -> Result<Vec<u8>, Error> {
+        let mut result: Vec<u8> = Vec::new();
+        self.write_all_to(&mut result, None)?;
+        Ok(result)
     }
 }

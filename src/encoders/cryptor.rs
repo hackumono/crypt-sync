@@ -3,7 +3,7 @@ use std::fs::{read_to_string, File};
 use std::io::{Bytes, Error, ErrorKind, Read};
 use std::path::{Path, PathBuf};
 
-use crate::crypt_encoder::*;
+use crate::crypt::crypt_encoder::*;
 use crate::util::*;
 
 lazy_static! {
@@ -16,7 +16,7 @@ macro_rules! cryptor {
     // `$struct_name` => Encryptor | Decryptor | ..
     // `$crypter_mode` => MODE::Encrypt | MODE::Decrypt
     ( $struct_name:ident, $crypter_mode:expr ) => {
-        struct $struct_name<T>
+        pub struct $struct_name<T>
         where
             T: Read,
         {
@@ -52,30 +52,6 @@ macro_rules! cryptor {
                     .map_err(|err| error_other!("{}", err))?,
                 })
             }
-
-            // trying to avoid bs buffer logic with this
-            // try to pull `size` number of bytes from source
-            // returns None instead of an empty vec because it looks cleaner when
-            // matching
-            fn buff(&mut self, size: usize) -> Result<Option<Vec<u8>>, Error> {
-                let mut buffer = Vec::with_capacity(size);
-
-                // not using iter because ? doesn't look clean and short circuiting is hard
-                // 1. try pulling n <= size bytes from self.source
-                // 2. break if Err
-                // 3. break if self.source is empty
-                for _ in (0..size) {
-                    match self.source.next() {
-                        Some(byte) => buffer.push(byte?),
-                        None => break,
-                    }
-                }
-
-                Ok(match buffer.len() {
-                    0 => None,
-                    _ => Some(buffer),
-                })
-            }
         }
 
         impl<T> Read for $struct_name<T>
@@ -94,13 +70,13 @@ macro_rules! cryptor {
 
                 // assume that 4096 bytes always produce > 0 number of ciphertext bytes
                 assert!(input_size > 0);
-                match self.buff(input_size)? {
+                match pull(&mut self.source, input_size)? {
                     None => Ok(0), // done reading
                     Some(buffer) => {
                         match self.encoder.update(&buffer, target).map_err(io_err)? {
                             0 => {
                                 // if 0, assume that we are done so finalize the encoder
-                                assert_eq!(None, self.buff(input_size).unwrap());
+                                assert_eq!(None, pull(&mut self.source, input_size).unwrap());
                                 self.encoder.finalize(&mut target[..]).map_err(io_err)
                             }
                             bytes_read => Ok(bytes_read),
@@ -296,8 +272,7 @@ mod tests {
                     Decryptor => Some(&key_hash)
                 );
 
-                let mut result: Vec<u8> = Vec::new();
-                cryptor.write_all_to(&mut result, buf_size)?;
+                let result = cryptor.all_to_vec()?;
 
                 let mut expected = Vec::new();
                 File::open(&src)?.read_to_end(&mut expected)?;

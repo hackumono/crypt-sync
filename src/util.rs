@@ -1,9 +1,10 @@
+use data_encoding::{Encoding, Specification};
 use openssl::error::ErrorStack;
 use openssl::{hash, symm};
 use std::env;
 use std::fmt::Display;
 use std::fs::File;
-use std::io::{Error, ErrorKind};
+use std::io::{Bytes, Error, ErrorKind, Read};
 use std::path::{Path, PathBuf};
 use std::result::Result;
 use tempfile::{self, NamedTempFile, TempDir};
@@ -16,6 +17,47 @@ macro_rules! error_other {
     ( $message:expr, $($arg:expr),* ) => {
         Error::new(ErrorKind::Other, format!($message, $($arg),*))
     };
+}
+
+// trying to avoid bs buffer logic with this
+// try to pull `size` number of bytes from source
+// returns None instead of an empty vec because it looks cleaner when
+// matching
+pub fn pull<T>(
+    //source: &mut impl Iterator<Item = Result<T, Error>>,
+    source: &mut Bytes<T>,
+    size: usize,
+) -> Result<Option<Vec<u8>>, Error>
+where
+    T: Read,
+{
+    let mut buffer = Vec::with_capacity(size);
+
+    // not using iter because ? doesn't look clean and short circuiting is hard
+    // 1. try pulling n <= size bytes from source
+    // 2. break if Err
+    // 3. break if source is empty
+    for _ in (0..size) {
+        match source.next() {
+            Some(byte) => buffer.push(byte?),
+            None => break,
+        }
+    }
+
+    Ok(match buffer.len() {
+        0 => None,
+        _ => Some(buffer),
+    })
+}
+
+#[inline]
+pub fn make_encoding(symbols: &str, padding: Option<char>) -> Encoding {
+    let mut spec = Specification::new();
+    spec.symbols.push_str(symbols);
+    if padding.is_some() {
+        spec.padding = padding;
+    }
+    spec.encoding().unwrap()
 }
 
 #[inline]

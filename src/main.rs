@@ -6,11 +6,11 @@ extern crate static_assertions;
 #[macro_use]
 mod util;
 
+#[macro_use]
+mod encoders;
+
 mod clargs;
-mod crypt_encoder;
-mod crypt_file;
-mod crypt_syncer;
-mod cryptor;
+mod crypt;
 
 assert_cfg!(unix, "Only Unix systems are supported");
 

@@ -4,33 +4,41 @@ use std::io::{Error, ErrorKind};
 use std::path::Path;
 use std::str;
 
+use crate::crypt::crypt_encoder::*;
+use crate::encoders::cryptor::*;
 use crate::util::*;
 
+lazy_static! {
+    static ref CUSTOM_ENCODING: Encoding = {
+        let symbols = "0123456789ABCDEFGHIJKLMNOPQRSTUV";
+        debug_assert_eq!(32, symbols.len());
+        make_encoding(symbols, Some('_'))
+    };
+}
+
+/// The data structure that drives the action.
+///
+/// This will probably be the one and only interface that `main.rs` interacts with.
+///
+///
 #[derive(Clone, Debug)]
 pub struct CryptSyncer {
     key_hash: Vec<u8>,
     encoding: Encoding,
 }
 
-lazy_static! {
-    static ref CUSTOM_ENCODING: Encoding = {
-        let symbols = "0123456789ABCDEFGHIJKLMNOPQRSTUV";
-        debug_assert_eq!(32, symbols.len());
-
-        let mut spec = Specification::new();
-        spec.symbols.push_str(symbols);
-        spec.padding = Some('_');
-        spec.encoding().unwrap()
-    };
-}
-
 impl CryptSyncer {
+    // TODO custom encodoing
     pub fn sync(src: &Path, dest_dir: &Path, key_hash: &[u8]) -> Result<(), Error> {
         assert!(src.exists());
         assert!(dest_dir.exists());
         debug_assert_eq!(16, key_hash.len());
         let syncer = CryptSyncer::new(key_hash, &CUSTOM_ENCODING);
         unimplemented!()
+    }
+
+    fn check_rep(&self) {
+        assert_eq!(32, self.key_hash.len());
     }
 
     #[inline]
@@ -49,8 +57,23 @@ impl CryptSyncer {
 
     /// encrypts the BASENAME
     /// path doesn't have to exist
+    ///
+    /// # Parameters
+    ///
+    /// 1. `path`: the file path whose basename will be encrypted and encoded
+    ///
+    /// # Returns
+    ///
+    /// Encrypts the basename of `path` with this instance's key, and returns
+    /// the resulting ciphertext.
     fn encrypt_path(&self, path: &Path) -> Result<String, Error> {
-        unimplemented!()
+        let mut cryptor = compose_encoders!(
+            basename_bytes(path)?,
+            Encryptor => Some(&self.key_hash[..])
+        );
+
+        let result = cryptor.all_to_vec()?;
+        Ok(self.encoding.encode(&result[..]))
         /*
         let basename: &[u8] = basename_bytes(path)?;
         debug_assert!(basename.len() > 0);
@@ -65,6 +88,12 @@ impl CryptSyncer {
     }
 
     /// path doesn't have to exist
+    ///
+    /// #
+    ///
+    /// # Returns
+    ///
+    ///
     fn decrypt_path(&self, path: &str) -> Result<String, Error> {
         unimplemented!()
         /*
