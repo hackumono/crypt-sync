@@ -1,18 +1,14 @@
-use data_encoding::{Encoding, Specification};
+use data_encoding::Encoding;
 use data_encoding_macro::*;
-use openssl::symm::{Cipher, Crypter, Mode};
 use rayon::iter::ParallelBridge;
-use rayon::prelude::ParallelIterator;
 use rayon::prelude::*;
 use std::cmp::min;
 use std::collections::VecDeque;
-use std::fs::{read_to_string, File};
-use std::io::{Bytes, Error, ErrorKind, Read};
-use std::path::{Path, PathBuf};
-use std::str;
+use std::io::Bytes;
+use std::io::Error;
+use std::io::Read;
 
 use crate::crypt::crypt_encoder::*;
-use crate::encoders::cryptor::*;
 use crate::util::*;
 
 const CUSTOM_ENCODING: Encoding = new_encoding! {
@@ -113,7 +109,7 @@ impl<T> Read for TextEncoder<T>
 where
     T: Read,
 {
-    fn read(&mut self, mut target: &mut [u8]) -> Result<usize, Error> {
+    fn read(&mut self, target: &mut [u8]) -> Result<usize, Error> {
         let size = dbg!(target.len());
 
         // try pushing enc buf
@@ -162,6 +158,7 @@ mod tests {
     #[cfg(test)]
     mod impl_read {
         use super::*;
+        use std::str;
 
         #[test]
         fn no_padding() {

@@ -1,5 +1,6 @@
-use openssl::symm::{Cipher, Crypter, Mode};
-use std::io::{Error, ErrorKind, Read, Write};
+use std::io::Error;
+use std::io::Read;
+use std::io::Write;
 
 /// This trait helps make the encoding logic more functional.
 ///

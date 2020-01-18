@@ -1,7 +1,10 @@
-use openssl::symm::{Cipher, Crypter, Mode};
-use std::fs::{read_to_string, File};
-use std::io::{Bytes, Error, ErrorKind, Read};
-use std::path::{Path, PathBuf};
+use openssl::symm::Cipher;
+use openssl::symm::Crypter;
+use openssl::symm::Mode;
+use std::io::Bytes;
+use std::io::Error;
+use std::io::ErrorKind;
+use std::io::Read;
 
 use crate::crypt::crypt_encoder::*;
 use crate::util::*;
@@ -58,7 +61,7 @@ macro_rules! cryptor {
         where
             T: Read,
         {
-            fn read(&mut self, mut target: &mut [u8]) -> Result<usize, Error> {
+            fn read(&mut self, target: &mut [u8]) -> Result<usize, Error> {
                 // `update` panics if `output.len() < input.len() + block_size`
                 //                    `output.len() - block_size  < input.len()`
                 //  when target.len() - self.block_size == 0, input size is set to 1
@@ -125,9 +128,9 @@ cryptor!(Decryptor, Mode::Decrypt);
 /// ```
 macro_rules! compose_encoders {
     ( $root:expr, $( $crypt_encoder:ident => $key:expr ),* ) => {{
-        let mut cryptor = $root;
+        let cryptor = $root;
         $(
-            let mut cryptor = $crypt_encoder::wrap(cryptor, $key)?;
+            let cryptor = $crypt_encoder::wrap(cryptor, $key)?;
         )*
         cryptor
     }};
@@ -136,6 +139,8 @@ macro_rules! compose_encoders {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs::File;
+    use std::path::Path;
 
     fn test_data() -> Vec<(&'static str, &'static str, Vec<u8>)> {
         vec![

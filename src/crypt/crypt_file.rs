@@ -1,8 +1,9 @@
-use rayon::prelude::*;
-use std::collections::HashSet;
-use std::fs::{metadata, symlink_metadata};
-use std::io::{Error, ErrorKind};
-use std::path::{Path, PathBuf};
+use std::fs::metadata;
+use std::fs::symlink_metadata;
+use std::io::Error;
+use std::io::ErrorKind;
+use std::path::Path;
+use std::path::PathBuf;
 use std::time::SystemTime;
 
 use crate::util::*;
@@ -104,6 +105,8 @@ mod tests {
     #[cfg(test)]
     mod new {
         use super::*;
+        use rayon::prelude::*;
+        use std::collections::HashSet;
 
         #[test]
         fn file() {

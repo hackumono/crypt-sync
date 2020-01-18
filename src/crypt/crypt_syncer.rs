@@ -1,6 +1,5 @@
-use data_encoding::{Encoding, Specification};
-use rayon::prelude::*;
-use std::io::{Error, ErrorKind};
+use data_encoding::Encoding;
+use std::io::Error;
 use std::path::Path;
 use std::str;
 

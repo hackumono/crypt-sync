@@ -1,13 +1,20 @@
-use data_encoding::{Encoding, Specification};
+use data_encoding::Encoding;
+use data_encoding::Specification;
 use openssl::error::ErrorStack;
-use openssl::{hash, symm};
+use openssl::hash;
 use std::env;
 use std::fmt::Display;
 use std::fs::File;
-use std::io::{Bytes, Error, ErrorKind, Read};
-use std::path::{Path, PathBuf};
+use std::io::Bytes;
+use std::io::Error;
+use std::io::ErrorKind;
+use std::io::Read;
+use std::path::Path;
+use std::path::PathBuf;
 use std::result::Result;
-use tempfile::{self, NamedTempFile, TempDir};
+use tempfile;
+use tempfile::NamedTempFile;
+use tempfile::TempDir;
 use walkdir::WalkDir;
 
 macro_rules! error_other {
@@ -37,7 +44,7 @@ where
     // 1. try pulling n <= size bytes from source
     // 2. break if Err
     // 3. break if source is empty
-    for _ in (0..size) {
+    for _ in 0..size {
         match source.next() {
             Some(byte) => buffer.push(byte?),
             None => break,
