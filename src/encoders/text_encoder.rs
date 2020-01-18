@@ -35,7 +35,8 @@ where
     src_buf: VecDeque<u8>, // input bytes from the source
     enc_buf: VecDeque<u8>, // encoded output bytes
 
-    src_pull_size: usize, // num bytes to pull from src each time
+    src_pull_size: usize,     // num bytes to pull from src each time
+    src_buf_pull_size: usize, // ... src_buf ...
 }
 
 impl<T> TextEncoder<T>
@@ -61,6 +62,8 @@ where
 
         // how many bytes can we pull from src, without having to resize src_buf?
         let src_pull_size = buf_size - src_block_size;
+        // base32 = 5 -> 8, so shuold only pull bufsize * 5/8
+        let src_buf_pull_size = buf_size * src_block_size / 8;
 
         Ok(TextEncoder {
             src_block_size,
@@ -69,6 +72,7 @@ where
             enc_buf: VecDeque::with_capacity(buf_size),
             src_buf: VecDeque::with_capacity(buf_size),
             src_pull_size,
+            src_buf_pull_size,
         })
     }
 
@@ -78,15 +82,11 @@ where
     /// `self.source`.
     fn replenish_src_buf(&mut self) -> Result<usize, Error> {
         match pull(&mut self.source, self.src_pull_size)? {
-            Some(src_bytes) => {
-                // push everything to the buffer
-                let num_bytes = src_bytes.len();
-                src_bytes
-                    .into_iter()
-                    .for_each(|byte| self.src_buf.push_back(byte));
-                Ok(num_bytes)
-            }
             None => Ok(0), // done reading
+            Some(src_bytes) => Ok(src_bytes
+                .into_iter()
+                .map(|byte| self.src_buf.push_back(byte))
+                .count()),
         }
     }
 
@@ -101,6 +101,8 @@ where
             0 => self.src_buf.len() + self.replenish_src_buf()?,
             _ => block_count * self.src_block_size, // bytes
         };
+
+        let bytes_to_pull = min(bytes_to_pull, self.src_buf_pull_size);
 
         match bytes_to_pull {
             0 => Ok(0), // done reading
@@ -202,4 +204,6 @@ mod tests {
             });
         }
     }
+
+    // add base32 testing to check padding logic
 }
