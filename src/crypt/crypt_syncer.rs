@@ -71,7 +71,7 @@ impl CryptSyncer {
             Encryptor => Some(&self.key_hash[..])
         );
 
-        let result = cryptor.all_to_vec()?;
+        let result = cryptor.as_vec()?;
         Ok(self.encoding.encode(&result[..]))
         /*
         let basename: &[u8] = basename_bytes(path)?;

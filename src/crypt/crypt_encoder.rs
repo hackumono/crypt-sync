@@ -1,6 +1,9 @@
 use std::io::Error;
 use std::io::Read;
 use std::io::Write;
+use std::str::from_utf8;
+
+use crate::util::*;
 
 /// This trait helps make the encoding logic more functional.
 ///
@@ -46,9 +49,14 @@ where
         Ok(count)
     }
 
-    fn all_to_vec(&mut self) -> Result<Vec<u8>, Error> {
+    fn as_vec(&mut self) -> Result<Vec<u8>, Error> {
         let mut result: Vec<u8> = Vec::new();
         self.write_all_to(&mut result, None)?;
         Ok(result)
+    }
+
+    fn as_string(&mut self) -> Result<String, Error> {
+        let result = self.as_vec()?;
+        from_utf8(&result[..]).map(String::from).map_err(io_err)
     }
 }

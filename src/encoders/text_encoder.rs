@@ -1,6 +1,5 @@
 use data_encoding::Encoding;
 use data_encoding_macro::*;
-use rayon::iter::ParallelBridge;
 use rayon::prelude::*;
 use std::cmp::min;
 use std::collections::VecDeque;
@@ -11,22 +10,32 @@ use std::io::Read;
 use crate::crypt::crypt_encoder::*;
 use crate::util::*;
 
-const CUSTOM_ENCODING: Encoding = new_encoding! {
-    symbols: "0123456789ABCDEFGHIJKLMNOPQRSTUV",
-    padding: '_',
+// BASE16, conforms to RFC4648; https://tools.ietf.org/search/rfc4648
+const BASE16: Encoding = new_encoding! {
+    symbols: "0123456789ABCDEF",
+    padding: None,
 };
 
+// BASE32, conforms to RFC4648; https://tools.ietf.org/search/rfc4648
+const BASE32: Encoding = new_encoding! {
+    symbols: "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567",
+    padding: '=',
+};
+
+/// Customizable binary-to-text encoding
 pub struct TextEncoder<T>
 where
     T: Read,
 {
-    encoding: Encoding,
-    block_size: usize, // in bytes
+    encoding: Encoding,    // what does the acutal encoding
+    src_block_size: usize, // min number of input bytes that encode to a pad-less output
     source: Bytes<T>,
 
-    // buffers to hold overflow data
-    src_buf: VecDeque<u8>,
-    enc_buf: VecDeque<u8>, // push_back, pop_front
+    // buffers to hold leftovers from ...
+    src_buf: VecDeque<u8>, // input bytes from the source
+    enc_buf: VecDeque<u8>, // encoded output bytes
+
+    src_pull_size: usize, // num bytes to pull from src each time
 }
 
 impl<T> TextEncoder<T>
@@ -36,22 +45,30 @@ where
     pub fn new(source: T, encoding: Option<&Encoding>) -> Result<Self, Error> {
         let encoding = match encoding {
             Some(enc) => enc.clone(),
-            None => CUSTOM_ENCODING.clone(),
+            None => BASE16.clone(),
         };
 
-        let symbols = encoding.specification().symbols;
-        assert!((symbols.len() as f64).log2().fract() < 1e-10);
+        // check that the encoding has 2^n number of symbols for some n
+        let symbol_count = encoding.specification().symbols.len() as f64;
+        let symbol_count_log2 = symbol_count.log2();
+        debug_assert!(symbol_count_log2.fract() < 1e-10);
 
-        let number_of_symbols = encoding.specification().symbols.len(); // 32
-        let symbol_size_in_bits = (number_of_symbols as f64).log2() as usize; // 5
-        let block_size = symbol_size_in_bits; // 5
+        // symbol_count_log2 bits are encoded into a byte
+        // so symbol_count_log2 bytes
+
+        let src_block_size = symbol_count_log2 as usize;
+        let buf_size = 2048; // arbitrary
+
+        // how many bytes can we pull from src, without having to resize src_buf?
+        let src_pull_size = buf_size - src_block_size;
 
         Ok(TextEncoder {
-            block_size,
+            src_block_size,
             encoding,
             source: source.bytes(),
-            enc_buf: VecDeque::with_capacity(4096),
-            src_buf: VecDeque::with_capacity(4096),
+            enc_buf: VecDeque::with_capacity(buf_size),
+            src_buf: VecDeque::with_capacity(buf_size),
+            src_pull_size,
         })
     }
 
@@ -60,13 +77,11 @@ where
     /// How many bytes were pulled into `self.src_buf`. 0 implies that we have reached the end of
     /// `self.source`.
     fn replenish_src_buf(&mut self) -> Result<usize, Error> {
-        match dbg!(pull(&mut self.source, 4096))? {
-            // 4096 into some field
-            // try pulling 4096 bytes
+        match pull(&mut self.source, self.src_pull_size)? {
             Some(src_bytes) => {
                 // push everything to the buffer
                 let num_bytes = src_bytes.len();
-                dbg!(src_bytes)
+                src_bytes
                     .into_iter()
                     .for_each(|byte| self.src_buf.push_back(byte));
                 Ok(num_bytes)
@@ -75,12 +90,16 @@ where
         }
     }
 
+    /// # Returns
+    ///
+    /// How many bytes were pulled into `self.enc_buf`. 0 implies that we have reached the end of
+    /// `self.source`.
     fn replenish_enc_buf(&mut self) -> Result<usize, Error> {
-        let block_count = self.src_buf.len() / self.block_size;
+        let block_count = self.src_buf.len() / self.src_block_size;
         let bytes_to_pull = match block_count {
             // this implies that we
             0 => self.src_buf.len() + self.replenish_src_buf()?,
-            _ => block_count * self.block_size, // bytes
+            _ => block_count * self.src_block_size, // bytes
         };
 
         match bytes_to_pull {
@@ -93,7 +112,7 @@ where
 
                 Ok(self
                     .encoding
-                    .encode(&dbg!(bytes)[..])
+                    .encode(&bytes[..])
                     .as_bytes()
                     .iter()
                     .map(|b| self.enc_buf.push_back(*b))
@@ -110,23 +129,23 @@ where
     T: Read,
 {
     fn read(&mut self, target: &mut [u8]) -> Result<usize, Error> {
-        let size = dbg!(target.len());
+        let size = target.len();
 
         // try pushing enc buf
-        if dbg!(self.enc_buf.len()) == 0 {
+        if self.enc_buf.len() == 0 {
             // try populating enc_buf
-            if dbg!(self.src_buf.len()) == 0 {
+            if self.src_buf.len() == 0 {
                 self.replenish_src_buf()?;
             }
             self.replenish_enc_buf()?;
         }
 
         // transfer as much as possible from enc_buf to target
-        match dbg!(target.len()) {
+        match target.len() {
             0 => Ok(0), // we're done can't write any
             target_capacity => {
                 // cannot write more than target's capacity or what's in enc buf
-                let num_bytes_to_write = min(target_capacity, self.enc_buf.len());
+                let num_bytes_to_write = min(self.enc_buf.len(), target_capacity);
                 Ok((0..num_bytes_to_write)
                     .map(|_| self.enc_buf.pop_front())
                     .map(Option::unwrap)
@@ -143,11 +162,8 @@ where
     T: Read,
 {
     fn wrap(source: T, hash: Option<&[u8]>) -> Result<Self, Error> {
-        unimplemented!()
-        /*match hash {
-            Some(key_hash) => Self::new(source, key_hash),
-            None => panic!("aposkj"), // TODO later
-        }*/
+        debug_assert!(hash.is_none());
+        TextEncoder::new(source, None)
     }
 }
 
@@ -156,20 +172,34 @@ mod tests {
     use super::*;
 
     #[cfg(test)]
-    mod impl_read {
+    mod base16 {
         use super::*;
         use std::str;
 
+        fn get_test_data() -> Vec<(&'static str, &'static str)> {
+            vec![
+                ("", ""),
+                ("a", "61"),
+                ("b", "62"),
+                ("ab", "6162"),
+                (
+                    "asoidjhxlkdjfad;:| !@$#^&*(_][",
+                    "61736F69646A68786C6B646A6661643B3A7C20214024235E262A285F5D5B",
+                ),
+            ]
+        }
+
         #[test]
         fn no_padding() {
-            let src = "aspfoksd".as_bytes();
+            get_test_data().into_iter().for_each(|(input, expected)| {
+                let input_bytes = input.as_bytes();
+                let result = TextEncoder::new(input_bytes, None)
+                    .unwrap()
+                    .as_string()
+                    .unwrap();
 
-            let enc: Vec<u8> = dbg!(TextEncoder::new(src, None).unwrap().all_to_vec().unwrap());
-            let encoded_str = dbg!(str::from_utf8(&enc));
-
-            assert_eq!(src.len() * 8 / 5, enc.len());
-            assert!(false);
-            // pub fn new(source: T, encoding: Option<&Encoding>) -> Result<Self, Error> {
+                assert_eq!(&result[..], expected);
+            });
         }
     }
 }

@@ -277,7 +277,7 @@ mod tests {
                     Decryptor => Some(&key_hash)
                 );
 
-                let result = cryptor.all_to_vec()?;
+                let result = cryptor.as_vec()?;
 
                 let mut expected = Vec::new();
                 File::open(&src)?.read_to_end(&mut expected)?;
