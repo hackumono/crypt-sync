@@ -17,7 +17,7 @@ use tempfile::NamedTempFile;
 use tempfile::TempDir;
 use walkdir::WalkDir;
 
-macro_rules! error_other {
+macro_rules! err {
     ( $message:expr ) => {
         Error::new(ErrorKind::Other, $message)
     };
@@ -69,16 +69,16 @@ pub fn make_encoding(symbols: &str, padding: Option<char>) -> Encoding {
 
 #[inline]
 pub fn io_err(error: impl Display) -> Error {
-    error_other!("{}", error)
+    err!("{}", error)
 }
 
 #[inline]
 pub fn basename_bytes(path: &Path) -> Result<&[u8], Error> {
     Ok(path
         .file_name()
-        .ok_or(error_other!("failed to get basename for `{:?}`", path))?
+        .ok_or(err!("failed to get basename for `{:?}`", path))?
         .to_str()
-        .ok_or(error_other!("failed to &OsStr -> &str for `{:?}`", path))?
+        .ok_or(err!("failed to &OsStr -> &str for `{:?}`", path))?
         .as_bytes())
 }
 
@@ -121,7 +121,7 @@ pub fn exists(file: &File) -> bool {
 }
 
 #[inline]
-pub fn tempfile_custom(
+pub fn mktemp_file(
     prefix: &str,
     suffix: &str,
     dest_dir: Option<&Path>,
@@ -133,11 +133,7 @@ pub fn tempfile_custom(
 }
 
 #[inline]
-pub fn tempdir_custom(
-    prefix: &str,
-    suffix: &str,
-    dest_dir: Option<&Path>,
-) -> Result<TempDir, Error> {
+pub fn mktemp_dir(prefix: &str, suffix: &str, dest_dir: Option<&Path>) -> Result<TempDir, Error> {
     tempfile::Builder::new()
         .prefix(prefix)
         .suffix(suffix)

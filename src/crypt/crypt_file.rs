@@ -1,10 +1,15 @@
+use std::cmp::Eq;
 use std::fs::metadata;
 use std::fs::symlink_metadata;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::io::Error;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::SystemTime;
+use tempfile::TempDir;
 
 use crate::util::*;
 
@@ -15,8 +20,11 @@ enum CFileType {
     FILE,
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CryptFile {
+    // some temp location where the encrypted files will be stored before
+    // being moved to their final locations
+    arena: Arc<TempDir>,
     cf_type: CFileType,
     children: Option<Vec<CryptFile>>, // directory content, None if file
     src: PathBuf,                     // path to the source file/dir
@@ -33,7 +41,11 @@ macro_rules! eprintln_then_none {
 impl<'a> CryptFile {
     /// # Parameters
     /// - `src` -> path to the original file to be encrypted
-    pub fn new(src: &Path) -> Result<Self, Error> {
+    pub fn sync(src: &Path, dest_dir: &Path) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    fn new(src: &Path, arena: Option<&Arc<TempDir>>) -> Result<Self, Error> {
         let meta = metadata(&src)?; // returns Err if symlink?
                                     // Ok if file or dir, Err if symlink
         let cf_type = if meta.is_file() {
@@ -42,16 +54,23 @@ impl<'a> CryptFile {
             Ok(CFileType::DIR)
         } else {
             assert!(symlink_metadata(&src).is_ok()); // assume that it is symlink
-            Err(error_other!("symlinks not supported yet"))
+            Err(err!("symlinks not supported yet"))
         }?;
 
+        let arena = arena
+            .map(Arc::clone)
+            .unwrap_or(Arc::new(mktemp_dir("", "", None)?));
+
+        // TODO right now just skips if IO error
+        // change to failing
         Ok(Self {
+            arena,
             children: match &cf_type {
                 CFileType::FILE => None,
                 CFileType::DIR => Some(
                     src.read_dir()?
                         .filter_map(|content| match content {
-                            Ok(c) => Some(CryptFile::new(c.path().as_path())),
+                            Ok(c) => Some(CryptFile::new(c.path().as_path(), None)),
                             Err(message) => eprintln_then_none!("{}", message),
                         })
                         .filter_map(|opt_cfile| match opt_cfile {
@@ -98,6 +117,20 @@ impl<'a> CryptFile {
     }
 }
 
+impl Hash for CryptFile {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.src.hash(state);
+    }
+}
+
+impl PartialEq for CryptFile {
+    fn eq(&self, other: &Self) -> bool {
+        self.source() == other.source()
+    }
+}
+
+impl Eq for CryptFile {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,12 +145,12 @@ mod tests {
         fn file() {
             // use line number to make each file unique
             let suffix = format!(".csync.{}", line!());
-            let file = tempfile_custom("", &suffix, None).unwrap();
+            let file = mktemp_file("", &suffix, None).unwrap();
 
             let src = file.path();
             assert!(src.exists());
 
-            let cfile = CryptFile::new(&src).unwrap();
+            let cfile = CryptFile::new(&src, None).unwrap();
 
             assert!(cfile.ls().is_none());
             assert!(cfile.is_file());
@@ -128,12 +161,12 @@ mod tests {
         fn empty_dir() {
             // use line number to make each dir unique
             let suffix = format!(".csync.{}", line!());
-            let dir = tempdir_custom("", &suffix, None).unwrap();
+            let dir = mktemp_dir("", &suffix, None).unwrap();
 
             let src = dir.path();
             assert!(src.exists());
 
-            let cdir = CryptFile::new(&src).unwrap();
+            let cdir = CryptFile::new(&src, None).unwrap();
 
             assert_eq!(0, cdir.ls().unwrap().count());
             assert!(cdir.is_dir());
@@ -154,11 +187,10 @@ mod tests {
             let suffix_file2 = format!(".csync.{}", line!());
 
             // create each one as tempfile/tempdir
-            let dir1 = tempdir_custom("", &suffix_dir1, None).unwrap();
-            let dir1_dir2 = tempdir_custom("", &suffix_dir2, Some(dir1.path())).unwrap();
-            let dir1_file1 = tempfile_custom("", &suffix_file1, Some(dir1.path())).unwrap();
-            let dir1_dir2_file2 =
-                tempfile_custom("", &suffix_file2, Some(dir1_dir2.path())).unwrap();
+            let dir1 = mktemp_dir("", &suffix_dir1, None).unwrap();
+            let dir1_dir2 = mktemp_dir("", &suffix_dir2, Some(dir1.path())).unwrap();
+            let dir1_file1 = mktemp_file("", &suffix_file1, Some(dir1.path())).unwrap();
+            let dir1_dir2_file2 = mktemp_file("", &suffix_file2, Some(dir1_dir2.path())).unwrap();
 
             // check that all temps have been created
             [
@@ -172,7 +204,7 @@ mod tests {
             .for_each(|temp| assert!(temp.exists()));
 
             // check that cdir1 has been initialized correctly
-            let cdir1 = CryptFile::new(&dir1.path()).unwrap();
+            let cdir1 = CryptFile::new(&dir1.path(), None).unwrap();
             assert!(cdir1.is_dir());
             assert_eq!(dir1.path().to_path_buf(), cdir1.source());
             // check cdir1's find children

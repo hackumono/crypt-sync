@@ -16,18 +16,6 @@ const BASE16: Encoding = new_encoding! {
     padding: None,
 };
 
-// BASE32, conforms to RFC4648; https://tools.ietf.org/search/rfc4648
-const BASE32: Encoding = new_encoding! {
-    symbols: "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567",
-    padding: '=',
-};
-
-// BASE64, conforms to RFC4648; https://tools.ietf.org/search/rfc4648
-const BASE64: Encoding = new_encoding! {
-    symbols: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
-    padding: '=',
-};
-
 /// Customizable binary-to-text encoding
 pub struct TextEncoder<T>
 where
@@ -205,6 +193,18 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // BASE32, conforms to RFC4648; https://tools.ietf.org/search/rfc4648
+    const BASE32: Encoding = new_encoding! {
+        symbols: "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567",
+        padding: '=',
+    };
+
+    // BASE64, conforms to RFC4648; https://tools.ietf.org/search/rfc4648
+    const BASE64: Encoding = new_encoding! {
+        symbols: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
+        padding: '=',
+    };
 
     #[cfg(test)]
     mod base16 {

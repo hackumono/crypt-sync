@@ -52,7 +52,7 @@ macro_rules! cryptor {
                         key_hash,
                         Some(&INITIALIZATION_VECTOR), // declared with `lazy_static!` at the top
                     )
-                    .map_err(|err| error_other!("{}", err))?,
+                    .map_err(|err| err!("{}", err))?,
                 })
             }
         }

@@ -23,11 +23,13 @@ fn main() {
         filesize -= 1024;
     }
     */
+
     // https://docs.rs/openssl/0.10.26/openssl/symm/index.html
     /*
         eprintln!("Enter your password:");
         let key: String = dbg!(read!("{}\n"));
         let key_bytes = key.as_bytes();
+        // TODO also ask for confirmation
         let key_hash = dbg!(util::sha512_with_len(key_bytes, 16).unwrap());
         let data = dbg!(b"Some Crypto Text");
         let encrypted = dbg!(util::encrypt(&key_hash[..], data));
@@ -41,7 +43,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_is_not_windows() {
-        assert!(!cfg!(windows));
+    fn os_is_unix() {
+        assert!(cfg!(unix));
     }
 }
