@@ -33,16 +33,21 @@ pub struct TextEncoder<T>
 where
     T: Read,
 {
-    encoding: Encoding,    // what does the acutal encoding
-    src_block_size: usize, // min number of input bytes that encode to a pad-less output
+    encoding: Encoding, // what does the acutal encoding
+    encoder: Box<dyn Fn(&Encoding, &[u8]) -> Result<Vec<u8>, Error>>,
+    block_size: usize, // min number of input bytes that encode to a pad-less output
     source: Bytes<T>,
 
     // buffers to hold leftovers from ...
     src_buf: VecDeque<u8>, // input bytes from the source
     enc_buf: VecDeque<u8>, // encoded output bytes
 
-    src_pull_size: usize,     // num bytes to pull from src each time
-    src_buf_pull_size: usize, // ... src_buf ...
+    // a `pull` from `src` to `src_buf` happend when when `src_buf.size < block_size`
+    // `src_pull_size` is the max number of bytes we can pull without forcing `src_buf` to resize
+    src_pull_size: usize,
+    // `src_buf_pull_size` is the max number of bytes we can pull from `src_buf` and transfer the
+    // encoded content to enc_buf, without forcing `enc_buf` to resize
+    src_buf_pull_size: usize, // ... `src_buf` ...
 }
 
 impl<T> TextEncoder<T>
@@ -50,30 +55,54 @@ where
     T: Read,
 {
     pub fn new(source: T, encoding: Option<&Encoding>) -> Result<Self, Error> {
-        let encoding = match encoding {
-            Some(enc) => enc.clone(),
-            None => BASE16.clone(),
-        };
+        TextEncoder::new_custom(source, encoding, None, None, None)
+    }
 
-        // check that the encoding has 2^n number of symbols for some n
-        let symbol_count = encoding.specification().symbols.len() as f64;
-        let symbol_count_log2 = symbol_count.log2();
-        debug_assert!(symbol_count_log2.fract() < 1e-10);
+    ///
+    ///
+    /// # Paramters
+    ///
+    /// 1. `source`: some struct that impl's the `std::io::Read` trait, from which the unencoded
+    ///    data will be read.
+    /// 1. `encoding`
+    /// 1. `encoder`:
+    /// 1. `encoding`
+    /// 1. `buf_size`: size of the buffers, in bytes. If `None` then `2048` will be used.
+    pub fn new_custom(
+        source: T,
+        encoding: Option<&Encoding>,
+        encoder: Option<Box<dyn Fn(&Encoding, &[u8]) -> Result<Vec<u8>, Error>>>,
+        block_sizer: Option<Box<dyn Fn(&Encoding) -> usize>>,
+        buf_size: Option<usize>,
+    ) -> Result<Self, Error> {
+        let encoding = encoding.map(Encoding::clone).unwrap_or(BASE16.clone());
+        let encoder = encoder.unwrap_or(Box::new(|encoding, data| {
+            Ok(Vec::from(encoding.encode(data).as_bytes()))
+        }));
 
-        // symbol_count_log2 bits are encoded into a byte
-        // so symbol_count_log2 bytes
+        // either use the provided, or default if None
+        let buf_size = buf_size.unwrap_or(2048);
+        let block_size = block_sizer.map(|f| (f)(&encoding)).unwrap_or({
+            // check that the encoding has 2^n number of symbols for some n
+            let symbol_count = encoding.specification().symbols.len() as f64;
+            let symbol_count_log2 = symbol_count.log2();
+            debug_assert!(symbol_count_log2.fract() < 1e-10);
 
-        let src_block_size = symbol_count_log2 as usize;
-        let buf_size = 2048; // arbitrary
+            symbol_count_log2 as usize
+        });
 
-        // how many bytes can we pull from src, without having to resize src_buf?
-        let src_pull_size = buf_size - src_block_size;
+        // assuming that pulling happens when size < block size,
+        //
+        // 1. we can always pull src_pull_size number of bytes into src_buf, without having to resize src_buf
+        // 2. ... src_buf_pull_size ... without having to resize enc_buf
+        let src_pull_size = buf_size - block_size;
         // base32 = 5 -> 8, so shuold only pull bufsize * 5/8
-        let src_buf_pull_size = buf_size * src_block_size / 8;
+        let src_buf_pull_size = buf_size * block_size / 8;
 
         Ok(TextEncoder {
-            src_block_size,
+            block_size,
             encoding,
+            encoder,
             source: source.bytes(),
             enc_buf: VecDeque::with_capacity(buf_size),
             src_buf: VecDeque::with_capacity(buf_size),
@@ -87,6 +116,7 @@ where
     /// How many bytes were pulled into `self.src_buf`. 0 implies that we have reached the end of
     /// `self.source`.
     fn replenish_src_buf(&mut self) -> Result<usize, Error> {
+        debug_assert!(self.src_buf.len() < self.block_size);
         match pull(&mut self.source, self.src_pull_size)? {
             None => Ok(0), // done reading
             Some(src_bytes) => Ok(src_bytes
@@ -101,11 +131,11 @@ where
     /// How many bytes were pulled into `self.enc_buf`. 0 implies that we have reached the end of
     /// `self.source`.
     fn replenish_enc_buf(&mut self) -> Result<usize, Error> {
-        let block_count = self.src_buf.len() / self.src_block_size;
+        let block_count = self.src_buf.len() / self.block_size;
         let bytes_to_pull = match block_count {
             // this implies that we
             0 => self.src_buf.len() + self.replenish_src_buf()?,
-            _ => block_count * self.src_block_size, // bytes
+            _ => block_count * self.block_size, // bytes
         };
 
         let bytes_to_pull = min(bytes_to_pull, self.src_buf_pull_size);
@@ -118,10 +148,7 @@ where
                     .map(Option::unwrap)
                     .collect();
 
-                Ok(self
-                    .encoding
-                    .encode(&bytes[..])
-                    .as_bytes()
+                Ok((self.encoder)(&self.encoding, &bytes[..])?
                     .iter()
                     .map(|b| self.enc_buf.push_back(*b))
                     .count())
