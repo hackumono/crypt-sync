@@ -22,6 +22,12 @@ const BASE32: Encoding = new_encoding! {
     padding: '=',
 };
 
+// BASE64, conforms to RFC4648; https://tools.ietf.org/search/rfc4648
+const BASE64: Encoding = new_encoding! {
+    symbols: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
+    padding: '=',
+};
+
 /// Customizable binary-to-text encoding
 pub struct TextEncoder<T>
 where
@@ -192,7 +198,7 @@ mod tests {
         }
 
         #[test]
-        fn no_padding() {
+        fn parametrized() {
             get_test_data().into_iter().for_each(|(input, expected)| {
                 let input_bytes = input.as_bytes();
                 let result = TextEncoder::new(input_bytes, None)
@@ -205,5 +211,71 @@ mod tests {
         }
     }
 
-    // add base32 testing to check padding logic
+    #[cfg(test)]
+    mod base32 {
+        use super::*;
+        use std::str;
+
+        fn get_test_data() -> Vec<(&'static str, &'static str)> {
+            // generated with base32 in GNU coreutils
+            vec![
+                ("a", "ME======"),
+                ("b", "MI======"),
+                ("ab", "MFRA===="),
+                ("abc", "MFRGG==="),
+                ("abcd", "MFRGGZA="),
+                (
+                    "asoidjhxlkdjfad;:| !@$#^&*(_][",
+                    "MFZW62LENJUHQ3DLMRVGMYLEHM5HYIBBIASCGXRGFIUF6XK3",
+                ),
+            ]
+        }
+
+        #[test]
+        fn parametrized() {
+            get_test_data().into_iter().for_each(|(input, expected)| {
+                let input_bytes = input.as_bytes();
+                let result = TextEncoder::new(input_bytes, Some(&BASE32))
+                    .unwrap()
+                    .as_string()
+                    .unwrap();
+
+                assert_eq!(&result[..], expected);
+            });
+        }
+    }
+
+    #[cfg(test)]
+    mod base64 {
+        use super::*;
+        use std::str;
+
+        fn get_test_data() -> Vec<(&'static str, &'static str)> {
+            // generated with base64 in GNU coreutils
+            vec![
+                ("a", "YQ=="),
+                ("b", "Yg=="),
+                ("ab", "YWI="),
+                ("abc", "YWJj"),
+                ("abcd", "YWJjZA=="),
+                (
+                    "asoidjhxlkdjfad;:| !@$#^&*(_][",
+                    "YXNvaWRqaHhsa2RqZmFkOzp8ICFAJCNeJiooX11b",
+                ),
+            ]
+        }
+
+        #[test]
+        fn parametrized() {
+            get_test_data().into_iter().for_each(|(input, expected)| {
+                let input_bytes = input.as_bytes();
+                let result = TextEncoder::new(input_bytes, Some(&BASE64))
+                    .unwrap()
+                    .as_string()
+                    .unwrap();
+
+                assert_eq!(&result[..], expected);
+            });
+        }
+    }
 }
