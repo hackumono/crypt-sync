@@ -1,4 +1,7 @@
+use rayon::iter::ParallelBridge;
+use rayon::prelude::*;
 use std::cmp::Eq;
+use std::collections::HashMap;
 use std::fs::metadata;
 use std::fs::symlink_metadata;
 use std::hash::Hash;
@@ -11,6 +14,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use tempfile::TempDir;
 
+use crate::encoders::text_encoder::*;
 use crate::util::*;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -25,10 +29,11 @@ pub struct CryptFile {
     // some temp location where the encrypted files will be stored before
     // being moved to their final locations
     arena: Arc<TempDir>,
-    cf_type: CFileType,
     children: Option<Vec<CryptFile>>, // directory content, None if file
-    src: PathBuf,                     // path to the source file/dir
-    src_modified: SystemTime,         // time at which src was last modified
+    file_type: CFileType,
+    name_in_arena: String,    // temp name of its intermediate form in the arena
+    src: PathBuf,             // path to the source file/dir
+    src_modified: SystemTime, // time at which src was last modified
 }
 
 macro_rules! eprintln_then_none {
@@ -39,38 +44,53 @@ macro_rules! eprintln_then_none {
 }
 
 impl<'a> CryptFile {
-    /// # Parameters
-    /// - `src` -> path to the original file to be encrypted
-    pub fn sync(src: &Path, dest_dir: &Path) -> Result<(), Error> {
+    pub fn new(src: &Path) -> Result<Self, Error> {
+        let arena = mktemp_dir("", "", None).map(Arc::new)?;
+        CryptFile::new_internal(src, &arena)
+    }
+
+    /// 1. for the root cfile,
+    pub fn sync(&self, dest_dir: &Path, key_hash: &[u8]) -> Result<(), Error> {
+        // 1. scan src to construct dir_map
+        // 2. call sync_internal
         unimplemented!()
     }
 
-    fn new(src: &Path, arena: Option<&Arc<TempDir>>) -> Result<Self, Error> {
-        let meta = metadata(&src)?; // returns Err if symlink?
-                                    // Ok if file or dir, Err if symlink
-        let cf_type = if meta.is_file() {
-            Ok(CFileType::FILE)
-        } else if meta.is_dir() {
-            Ok(CFileType::DIR)
-        } else {
-            assert!(symlink_metadata(&src).is_ok()); // assume that it is symlink
-            Err(err!("symlinks not supported yet"))
-        }?;
+    fn sync_internal(
+        &self,
+        dest_dir: &Path,
+        key_hash: &[u8],
+        dir_map: &HashMap<PathBuf, PathBuf>,
+    ) -> Result<(), Error> {
+        if self.is_dir() {
+            self.children.as_ref().unwrap().par_iter();
+        }
+        unimplemented!()
+    }
 
-        let arena = arena
-            .map(Arc::clone)
-            .unwrap_or(Arc::new(mktemp_dir("", "", None)?));
+    // pass optional memo map
+    fn new_internal(src: &Path, arena: &Arc<TempDir>) -> Result<Self, Error> {
+        let meta = metadata(&src)?; // returns Err if symlink?
+
+        let src = src.to_path_buf();
+        let src_modified = meta.modified()?;
+
+        let file_type = match &meta {
+            _ if meta.is_file() => Ok(CFileType::FILE),
+            _ if meta.is_dir() => Ok(CFileType::DIR),
+            _ => Err(err!("symlinks not supported yet")),
+        }?;
 
         // TODO right now just skips if IO error
         // change to failing
         Ok(Self {
-            arena,
-            children: match &cf_type {
+            children: match &file_type {
                 CFileType::FILE => None,
                 CFileType::DIR => Some(
                     src.read_dir()?
-                        .filter_map(|content| match content {
-                            Ok(c) => Some(CryptFile::new(c.path().as_path(), None)),
+                        .par_bridge()
+                        .filter_map(|opt_src| match opt_src {
+                            Ok(src) => Some(CryptFile::new_internal(src.path().as_path(), &arena)),
                             Err(message) => eprintln_then_none!("{}", message),
                         })
                         .filter_map(|opt_cfile| match opt_cfile {
@@ -80,30 +100,34 @@ impl<'a> CryptFile {
                         .collect(),
                 ),
             },
-            cf_type,
-            src: src.to_path_buf(),
-            src_modified: meta.modified()?,
+            name_in_arena: String::from(format!(
+                "{}_{}.csync",
+                sha512_string(src.to_str().map(str::as_bytes).unwrap())?,
+                SystemTime::now()
+                    .duration_since(src_modified)
+                    .map_err(io_err)?
+                    .as_nanos()
+            )),
+            file_type,
+            arena: arena.clone(),
+            src,
+            src_modified,
         })
     }
 
     #[inline]
-    pub fn ls(&'a self) -> Option<impl Iterator<Item = CryptFile> + 'a> {
-        self.children.as_ref().map(|cs| cs.iter().cloned())
-    }
-
-    #[inline]
-    pub fn find(&'a self) -> impl Iterator<Item = PathBuf> + 'a {
-        find(self.src.as_path())
+    pub fn ls(&'a self) -> Option<impl ParallelIterator<Item = CryptFile> + 'a> {
+        self.children.as_ref().map(|cs| cs.par_iter().cloned())
     }
 
     #[inline]
     pub fn is_file(&self) -> bool {
-        self.cf_type == CFileType::FILE
+        self.file_type == CFileType::FILE
     }
 
     #[inline]
     pub fn is_dir(&self) -> bool {
-        self.cf_type == CFileType::DIR
+        self.file_type == CFileType::DIR
     }
 
     #[inline]
@@ -150,7 +174,7 @@ mod tests {
             let src = file.path();
             assert!(src.exists());
 
-            let cfile = CryptFile::new(&src, None).unwrap();
+            let cfile = CryptFile::new(&src).unwrap();
 
             assert!(cfile.ls().is_none());
             assert!(cfile.is_file());
@@ -166,7 +190,7 @@ mod tests {
             let src = dir.path();
             assert!(src.exists());
 
-            let cdir = CryptFile::new(&src, None).unwrap();
+            let cdir = CryptFile::new(&src).unwrap();
 
             assert_eq!(0, cdir.ls().unwrap().count());
             assert!(cdir.is_dir());
@@ -204,22 +228,9 @@ mod tests {
             .for_each(|temp| assert!(temp.exists()));
 
             // check that cdir1 has been initialized correctly
-            let cdir1 = CryptFile::new(&dir1.path(), None).unwrap();
+            let cdir1 = CryptFile::new(&dir1.path()).unwrap();
             assert!(cdir1.is_dir());
             assert_eq!(dir1.path().to_path_buf(), cdir1.source());
-            // check cdir1's find children
-            let cdir1_fd: HashSet<_> = cdir1.find().collect();
-            let cdir1_fd_expected: HashSet<_> = [
-                dir1.path(),
-                dir1_dir2.path(),
-                dir1_file1.path(),
-                dir1_dir2_file2.path(),
-            ]
-            .par_iter()
-            .cloned()
-            .map(Path::to_path_buf)
-            .collect();
-            assert_eq!(cdir1_fd_expected, cdir1_fd);
 
             // check cdir1's ls children
             let cdir1_ls: HashSet<_> = cdir1.ls().unwrap().collect();
@@ -264,5 +275,12 @@ mod tests {
             assert!(cfile2.ls().is_none());
             assert_eq!(dir1_dir2_file2.path().to_path_buf(), cfile2.source());
         }
+    }
+
+    #[test]
+    fn test() {
+        let x = CryptFile::new(Path::new("Cargo.toml")).unwrap();
+        println!("{:#?}", x);
+        assert!(false);
     }
 }

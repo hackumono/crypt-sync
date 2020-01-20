@@ -11,6 +11,24 @@ use crate::crypt::crypt_encoder::*;
 use crate::encoders::text_encoder::*;
 use crate::util::*;
 
+// BASE16, conforms to RFC4648; https://tools.ietf.org/search/rfc4648
+const BASE16: Encoding = new_encoding! {
+    symbols: "0123456789ABCDEF",
+    padding: None,
+};
+
+// BASE32, conforms to RFC4648; https://tools.ietf.org/search/rfc4648
+const BASE32: Encoding = new_encoding! {
+    symbols: "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567",
+    padding: '=',
+};
+
+// BASE64, conforms to RFC4648; https://tools.ietf.org/search/rfc4648
+const BASE64: Encoding = new_encoding! {
+    symbols: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
+    padding: '=',
+};
+
 /// Customizable binary-to-text encoding
 pub struct TextDecoder<T>
 where
@@ -23,11 +41,15 @@ impl<T> TextDecoder<T>
 where
     T: Read,
 {
-    pub fn new(source: T, encoding: Option<&Encoding>) -> Result<Self, Error> {
+    pub fn new(source: T, enc_type: EncType) -> Result<Self, Error> {
         Ok(TextDecoder {
             decoder: TextEncoder::new_custom(
                 source,
-                encoding,
+                Some(match enc_type {
+                    EncType::BASE16 => &BASE16,
+                    EncType::BASE32 => &BASE32,
+                    EncType::BASE64 => &BASE64,
+                }),
                 Some(Box::new(|encoding, data| {
                     Ok(Vec::from(encoding.decode(data).map_err(io_err)?))
                 })),
@@ -60,25 +82,13 @@ where
 {
     fn wrap(source: T, hash: Option<&[u8]>) -> Result<Self, Error> {
         debug_assert!(hash.is_none());
-        TextDecoder::new(source, None)
+        TextDecoder::new(source, EncType::BASE16)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // BASE32, conforms to RFC4648; https://tools.ietf.org/search/rfc4648
-    const BASE32: Encoding = new_encoding! {
-        symbols: "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567",
-        padding: '=',
-    };
-
-    // BASE64, conforms to RFC4648; https://tools.ietf.org/search/rfc4648
-    const BASE64: Encoding = new_encoding! {
-        symbols: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
-        padding: '=',
-    };
 
     #[cfg(test)]
     mod base16 {
@@ -102,7 +112,7 @@ mod tests {
         fn parametrized() {
             get_test_data().into_iter().for_each(|(expected, input)| {
                 let input_bytes = input.as_bytes();
-                let result = TextDecoder::new(input_bytes, None)
+                let result = TextDecoder::new(input_bytes, EncType::BASE16)
                     .unwrap()
                     .as_string()
                     .unwrap();
@@ -136,7 +146,7 @@ mod tests {
         fn parametrized() {
             get_test_data().into_iter().for_each(|(expected, input)| {
                 let input_bytes = input.as_bytes();
-                let result = TextDecoder::new(input_bytes, Some(&BASE32))
+                let result = TextDecoder::new(input_bytes, EncType::BASE32)
                     .unwrap()
                     .as_string()
                     .unwrap();
@@ -170,7 +180,7 @@ mod tests {
         fn parametrized() {
             get_test_data().into_iter().for_each(|(expected, input)| {
                 let input_bytes = input.as_bytes();
-                let result = TextDecoder::new(input_bytes, Some(&BASE64))
+                let result = TextDecoder::new(input_bytes, EncType::BASE64)
                     .unwrap()
                     .as_string()
                     .unwrap();

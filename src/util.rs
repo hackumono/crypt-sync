@@ -1,5 +1,6 @@
 use data_encoding::Encoding;
 use data_encoding::Specification;
+use data_encoding_macro::*;
 use openssl::error::ErrorStack;
 use openssl::hash;
 use std::env;
@@ -12,10 +13,13 @@ use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 use std::result::Result;
+use std::str;
 use tempfile;
 use tempfile::NamedTempFile;
 use tempfile::TempDir;
 use walkdir::WalkDir;
+
+use crate::encoders::text_encoder::*;
 
 macro_rules! err {
     ( $message:expr ) => {
@@ -25,6 +29,11 @@ macro_rules! err {
         Error::new(ErrorKind::Other, format!($message, $($arg),*))
     };
 }
+
+const CUSTOM_BASE64: Encoding = new_encoding! {
+    symbols: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-",
+    padding: '=',
+};
 
 // trying to avoid bs buffer logic with this
 // try to pull `size` number of bytes from source
@@ -90,12 +99,11 @@ pub fn walker(root: &Path) -> WalkDir {
 
 // analogous to `find` in Bash
 #[inline]
-pub fn find<'a>(root: &'a Path) -> impl Iterator<Item = PathBuf> + 'a {
+pub fn find<'a>(root: &'a Path) -> impl Iterator<Item = Result<PathBuf, Error>> + 'a {
     debug_assert!(root.exists());
     walker(root)
         .into_iter()
-        .map(Result::unwrap)
-        .map(walkdir::DirEntry::into_path)
+        .map(|x| x.map(walkdir::DirEntry::into_path).map_err(io_err))
 }
 
 // 0 <= length <= 64
@@ -107,6 +115,19 @@ pub fn sha512_with_len(data: &[u8], length: u8) -> Result<Vec<u8>, ErrorStack> {
         .cloned()
         .take(length as usize)
         .collect())
+}
+
+/// len-128 hexified hash string
+#[inline]
+pub fn sha512_string(data: &[u8]) -> Result<String, Error> {
+    TextEncoder::new_custom(
+        &sha512_with_len(data, 64)?[..],
+        Some(&CUSTOM_BASE64),
+        None,
+        None,
+        None,
+    )?
+    .as_string()
 }
 
 // return a len-32 hash of the given key

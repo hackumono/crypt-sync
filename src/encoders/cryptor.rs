@@ -9,9 +9,7 @@ use std::io::Read;
 use crate::crypt::crypt_encoder::*;
 use crate::util::*;
 
-lazy_static! {
-    static ref INITIALIZATION_VECTOR: Vec<u8> = { (0..16).collect() };
-}
+const INITIALIZATION_VECTOR: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
 /// create Encryptor and Decryptor, because they differ only by the
 /// struct name and the openssl::symm::Mode that is used
@@ -50,7 +48,7 @@ macro_rules! cryptor {
                         cipher,
                         $crypter_mode, // one of openssl::symm::Mode
                         key_hash,
-                        Some(&INITIALIZATION_VECTOR), // declared with `lazy_static!` at the top
+                        Some(&INITIALIZATION_VECTOR),
                     )
                     .map_err(|err| err!("{}", err))?,
                 })
@@ -260,6 +258,7 @@ mod tests {
         ];
 
         find(Path::new("./src/"))
+            .map(Result::unwrap)
             .filter(|path_buf| path_buf.as_path().is_file())
             .flat_map(|path_buf| {
                 // PathBuf -> PathBuf x Option<usize>
