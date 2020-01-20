@@ -1,6 +1,7 @@
 use openssl::symm::Cipher;
 use openssl::symm::Crypter;
 use openssl::symm::Mode;
+use rayon::prelude::*;
 use std::io::Bytes;
 use std::io::Error;
 use std::io::ErrorKind;
@@ -122,7 +123,7 @@ cryptor!(Decryptor, Mode::Decrypt);
 ///     Decryptor => Some(key),
 /// );
 ///
-/// unimplemented!();
+/// todo!();
 /// ```
 macro_rules! compose_encoders {
     ( $root:expr, $( $crypt_encoder:ident => $key:expr ),* ) => {{
@@ -179,16 +180,10 @@ mod tests {
                 let unhashed_key_bytes = unhashed_key.as_bytes();
                 let key_hash = sha512_with_len(unhashed_key_bytes, 32).unwrap();
 
-                let mut result = Vec::new();
-
-                let mut cryptor = compose_encoders!(
+                compose_encoders!(
                     data,
                     $( $crypt_encoder => Some(&key_hash[..]) ),*
-                );
-
-                cryptor.read_to_end(&mut result).unwrap();
-
-                Ok(result)
+                ).as_vec()
             }
         };
     }
@@ -202,7 +197,7 @@ mod tests {
     #[test]
     fn parametrized_encrypt() {
         test_data()
-            .into_iter()
+            .into_par_iter()
             .for_each(|(unhashed_key, data, expected_ciphertext)| {
                 let data_bytes = data.as_bytes();
 
@@ -217,7 +212,7 @@ mod tests {
     #[test]
     fn parametrized_decrypt() {
         test_data()
-            .into_iter()
+            .into_par_iter()
             .for_each(|(unhashed_key, data, expected_ciphertext)| {
                 let data_bytes = data.as_bytes();
                 if data_bytes.len() > 0 {
@@ -232,7 +227,7 @@ mod tests {
     #[test]
     fn parametrized_wrap_identitity() {
         test_data()
-            .into_iter()
+            .into_par_iter()
             .for_each(|(unhashed_key, data, expected_ciphertext)| {
                 let data_bytes = data.as_bytes();
                 if data_bytes.len() > 0 {

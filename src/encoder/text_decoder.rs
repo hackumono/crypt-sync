@@ -8,7 +8,7 @@ use std::io::Error;
 use std::io::Read;
 
 use crate::crypt::crypt_encoder::*;
-use crate::encoders::text_encoder::*;
+use crate::encoder::text_encoder::*;
 use crate::util::*;
 
 // BASE16, conforms to RFC4648; https://tools.ietf.org/search/rfc4648
@@ -110,15 +110,17 @@ mod tests {
 
         #[test]
         fn parametrized() {
-            get_test_data().into_iter().for_each(|(expected, input)| {
-                let input_bytes = input.as_bytes();
-                let result = TextDecoder::new(input_bytes, EncType::BASE16)
-                    .unwrap()
-                    .as_string()
-                    .unwrap();
+            get_test_data()
+                .into_par_iter()
+                .for_each(|(expected, input)| {
+                    let input_bytes = input.as_bytes();
+                    let result = TextDecoder::new(input_bytes, EncType::BASE16)
+                        .unwrap()
+                        .as_string()
+                        .unwrap();
 
-                assert_eq!(&result[..], expected);
-            });
+                    assert_eq!(&result[..], expected);
+                });
         }
     }
 
@@ -144,15 +146,17 @@ mod tests {
 
         #[test]
         fn parametrized() {
-            get_test_data().into_iter().for_each(|(expected, input)| {
-                let input_bytes = input.as_bytes();
-                let result = TextDecoder::new(input_bytes, EncType::BASE32)
-                    .unwrap()
-                    .as_string()
-                    .unwrap();
+            get_test_data()
+                .into_par_iter()
+                .for_each(|(expected, input)| {
+                    let input_bytes = input.as_bytes();
+                    let result = TextDecoder::new(input_bytes, EncType::BASE32)
+                        .unwrap()
+                        .as_string()
+                        .unwrap();
 
-                assert_eq!(&result[..], expected);
-            });
+                    assert_eq!(&result[..], expected);
+                });
         }
     }
 
@@ -178,15 +182,17 @@ mod tests {
 
         #[test]
         fn parametrized() {
-            get_test_data().into_iter().for_each(|(expected, input)| {
-                let input_bytes = input.as_bytes();
-                let result = TextDecoder::new(input_bytes, EncType::BASE64)
-                    .unwrap()
-                    .as_string()
-                    .unwrap();
+            get_test_data()
+                .into_par_iter()
+                .for_each(|(expected, input)| {
+                    let input_bytes = input.as_bytes();
+                    let result = TextDecoder::new(input_bytes, EncType::BASE64)
+                        .unwrap()
+                        .as_string()
+                        .unwrap();
 
-                assert_eq!(&result[..], expected);
-            });
+                    assert_eq!(&result[..], expected);
+                });
         }
     }
 }

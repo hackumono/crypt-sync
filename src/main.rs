@@ -5,7 +5,7 @@ extern crate static_assertions;
 mod util;
 
 #[macro_use]
-mod encoders;
+mod encoder;
 
 mod clargs;
 mod crypt;
@@ -33,7 +33,7 @@ fn main() {
         let encrypted = dbg!(util::encrypt(&key_hash[..], data));
     */
 
-    unimplemented!();
+    todo!();
 }
 
 #[cfg(test)]

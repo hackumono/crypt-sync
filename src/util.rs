@@ -19,7 +19,7 @@ use tempfile::NamedTempFile;
 use tempfile::TempDir;
 use walkdir::WalkDir;
 
-use crate::encoders::text_encoder::*;
+use crate::encoder::text_encoder::*;
 
 macro_rules! err {
     ( $message:expr ) => {

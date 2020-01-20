@@ -10,11 +10,13 @@ use std::io::Error;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
+use std::str;
 use std::sync::Arc;
 use std::time::SystemTime;
 use tempfile::TempDir;
 
-use crate::encoders::text_encoder::*;
+use crate::encoder::cryptor::*;
+use crate::encoder::text_encoder::*;
 use crate::util::*;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -53,19 +55,62 @@ impl<'a> CryptFile {
     pub fn sync(&self, dest_dir: &Path, key_hash: &[u8]) -> Result<(), Error> {
         // 1. scan src to construct dir_map
         // 2. call sync_internal
-        unimplemented!()
+        // (optional<path>, optional<error>)
+        let (dirs, errs): (Vec<Option<PathBuf>>, Vec<Option<Error>>) = find(&self.src)
+            .map(|opt_path| match opt_path {
+                // only select dirs
+                Ok(path) if path.is_dir() => (None, None),
+                Ok(path) => (Some(path), None),
+                Err(err) => (None, Some(err)),
+            })
+            .unzip();
+
+        // if any errored, return
+        match errs.into_par_iter().find(Option::is_some) {
+            Some(Some(err)) => Err(err)?,
+            _ => (),
+        };
+
+        dirs.into_par_iter()
+            .filter(Option::is_some)
+            .map(Option::unwrap)
+            .map(|path_buf| match path_buf.as_path().to_str() {
+                None => Err(err!("{:?} contains non utf8 chars", path_buf)),
+                Some(as_str) => {
+                    let ciphertext: String = compose_encoders!(
+                        as_str.as_bytes(),
+                        Encryptor => Some(&key_hash[..]),
+                        TextEncoder => None
+                    )
+                    .as_string()?;
+
+                    Ok((path_buf, ciphertext))
+                }
+            })
+            .filter_map(|result| match result {
+                Ok(x) => Some(x),
+                Err(err) => eprintln_then_none!("{:?}", err),
+            });
+        /*
+        let mut cryptor = compose_encoders!(
+            File::open(&src).unwrap(),
+            Encryptor => Some(&key_hash),
+            Decryptor => Some(&key_hash)
+        );
+        */
+        todo!()
     }
 
     fn sync_internal(
         &self,
         dest_dir: &Path,
         key_hash: &[u8],
-        dir_map: &HashMap<PathBuf, PathBuf>,
+        dir_map: &HashMap<PathBuf, String>,
     ) -> Result<(), Error> {
         if self.is_dir() {
             self.children.as_ref().unwrap().par_iter();
         }
-        unimplemented!()
+        todo!()
     }
 
     // pass optional memo map

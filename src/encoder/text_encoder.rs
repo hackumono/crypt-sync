@@ -242,15 +242,17 @@ mod tests {
 
         #[test]
         fn parametrized() {
-            get_test_data().into_iter().for_each(|(input, expected)| {
-                let input_bytes = input.as_bytes();
-                let result = TextEncoder::new(input_bytes, EncType::BASE16)
-                    .unwrap()
-                    .as_string()
-                    .unwrap();
+            get_test_data()
+                .into_par_iter()
+                .for_each(|(input, expected)| {
+                    let input_bytes = input.as_bytes();
+                    let result = TextEncoder::new(input_bytes, EncType::BASE16)
+                        .unwrap()
+                        .as_string()
+                        .unwrap();
 
-                assert_eq!(&result[..], expected);
-            });
+                    assert_eq!(&result[..], expected);
+                });
         }
     }
 
@@ -276,15 +278,17 @@ mod tests {
 
         #[test]
         fn parametrized() {
-            get_test_data().into_iter().for_each(|(input, expected)| {
-                let input_bytes = input.as_bytes();
-                let result = TextEncoder::new(input_bytes, EncType::BASE32)
-                    .unwrap()
-                    .as_string()
-                    .unwrap();
+            get_test_data()
+                .into_par_iter()
+                .for_each(|(input, expected)| {
+                    let input_bytes = input.as_bytes();
+                    let result = TextEncoder::new(input_bytes, EncType::BASE32)
+                        .unwrap()
+                        .as_string()
+                        .unwrap();
 
-                assert_eq!(&result[..], expected);
-            });
+                    assert_eq!(&result[..], expected);
+                });
         }
     }
 
@@ -310,15 +314,17 @@ mod tests {
 
         #[test]
         fn parametrized() {
-            get_test_data().into_iter().for_each(|(input, expected)| {
-                let input_bytes = input.as_bytes();
-                let result = TextEncoder::new(input_bytes, EncType::BASE64)
-                    .unwrap()
-                    .as_string()
-                    .unwrap();
+            get_test_data()
+                .into_par_iter()
+                .for_each(|(input, expected)| {
+                    let input_bytes = input.as_bytes();
+                    let result = TextEncoder::new(input_bytes, EncType::BASE64)
+                        .unwrap()
+                        .as_string()
+                        .unwrap();
 
-                assert_eq!(&result[..], expected);
-            });
+                    assert_eq!(&result[..], expected);
+                });
         }
     }
 }
