@@ -52,10 +52,11 @@ impl<'a> CryptFile {
     }
 
     /// 1. for the root cfile,
-    pub fn sync(&self, dest_dir: &Path, key_hash: &[u8]) -> Result<(), Error> {
+    pub fn sync(&self, out_dir: &Path, key_hash: &[u8]) -> Result<(), Error> {
         // 1. scan src to construct dir_map
         // 2. call sync_internal
         // (optional<path>, optional<error>)
+
         let (dirs, errs): (Vec<Option<PathBuf>>, Vec<Option<Error>>) = find(&self.src)
             .map(|opt_path| match opt_path {
                 // only select dirs
@@ -66,7 +67,7 @@ impl<'a> CryptFile {
             .unzip();
 
         // if any errored, return
-        match errs.into_par_iter().find(Option::is_some) {
+        match errs.into_iter().find(Option::is_some) {
             Some(Some(err)) => Err(err)?,
             _ => (),
         };
@@ -91,6 +92,7 @@ impl<'a> CryptFile {
                 Ok(x) => Some(x),
                 Err(err) => eprintln_then_none!("{:?}", err),
             });
+
         /*
         let mut cryptor = compose_encoders!(
             File::open(&src).unwrap(),
@@ -103,7 +105,7 @@ impl<'a> CryptFile {
 
     fn sync_internal(
         &self,
-        dest_dir: &Path,
+        out_dir: &Path,
         key_hash: &[u8],
         dir_map: &HashMap<PathBuf, String>,
     ) -> Result<(), Error> {
@@ -213,7 +215,7 @@ mod tests {
         #[test]
         fn file() {
             // use line number to make each file unique
-            let suffix = format!(".csync.{}", line!());
+            let suffix = format!(".csync.crypt_file.{}", line!());
             let file = mktemp_file("", &suffix, None).unwrap();
 
             let src = file.path();
@@ -229,7 +231,7 @@ mod tests {
         #[test]
         fn empty_dir() {
             // use line number to make each dir unique
-            let suffix = format!(".csync.{}", line!());
+            let suffix = format!(".csync.crypt_file.{}", line!());
             let dir = mktemp_dir("", &suffix, None).unwrap();
 
             let src = dir.path();
@@ -250,10 +252,10 @@ mod tests {
             //          |- file2
 
             // unique suffixes for each file/dir
-            let suffix_dir1 = format!(".csync.{}", line!());
-            let suffix_dir2 = format!(".csync.{}", line!());
-            let suffix_file1 = format!(".csync.{}", line!());
-            let suffix_file2 = format!(".csync.{}", line!());
+            let suffix_dir1 = format!(".csync.crypt_file.{}", line!());
+            let suffix_dir2 = format!(".csync.crypt_file.{}", line!());
+            let suffix_file1 = format!(".csync.crypt_file.{}", line!());
+            let suffix_file2 = format!(".csync.crypt_file.{}", line!());
 
             // create each one as tempfile/tempdir
             let dir1 = mktemp_dir("", &suffix_dir1, None).unwrap();

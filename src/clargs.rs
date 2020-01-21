@@ -4,13 +4,13 @@ use structopt::StructOpt;
 #[derive(StructOpt, Debug)]
 #[structopt(name = "csync")]
 pub struct Opts {
-    // /// any and all debug information
-    // #[structopt(short = "d", long = "debug")]
-    // pub debug: bool,
     #[structopt(parse(from_os_str))]
-    pub file: PathBuf,
+    pub source: PathBuf,
 
-    #[structopt(short = "t", long = "target", parse(from_os_str))]
-    pub target_dir: PathBuf,
-    // in place editing option
+    #[structopt(short = "o", long = "out", parse(from_os_str))]
+    pub out_dir: PathBuf,
+
+    /// watch for changes in `source`, and sync when changes are detected
+    #[structopt(short = "w", long = "watch")]
+    pub watch: bool,
 }

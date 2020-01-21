@@ -1,6 +1,7 @@
 use openssl::symm::Cipher;
 use openssl::symm::Crypter;
 use openssl::symm::Mode;
+use rayon::iter::ParallelBridge;
 use rayon::prelude::*;
 use std::io::Bytes;
 use std::io::Error;
@@ -253,14 +254,14 @@ mod tests {
         ];
 
         find(Path::new("./src/"))
+            .par_bridge()
             .map(Result::unwrap)
             .filter(|path_buf| path_buf.as_path().is_file())
             .flat_map(|path_buf| {
                 // PathBuf -> PathBuf x Option<usize>
-                // essentially create pairs of (pathbuf, buffer sizes), to test
-                // various buffer sizes
+                // essentially create pairs of (pathbuf, buffer sizes), to test various buffer sizes
                 buffer_sizes
-                    .iter()
+                    .par_iter()
                     .cloned()
                     .map(move |buf_size| (path_buf.clone(), buf_size))
             })
