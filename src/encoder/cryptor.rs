@@ -38,7 +38,7 @@ macro_rules! cryptor {
             ///
             /// - `source`: some struct that impls `std::io::Read` that this struct wraps around
             /// - `key_hash`: length-32 hash to be used as a key for (en|de)cryption
-            fn new(source: T, key_hash: &[u8]) -> Result<Self, Error> {
+            pub fn new(source: T, key_hash: &[u8]) -> Result<Self, Error> {
                 assert_eq!(32, key_hash.len());
 
                 let cipher = Cipher::aes_256_cfb128();
@@ -89,17 +89,7 @@ macro_rules! cryptor {
             }
         }
 
-        impl<T> CryptEncoder<T> for $struct_name<T>
-        where
-            T: Read,
-        {
-            fn wrap(source: T, hash: Option<&[u8]>) -> Result<Self, Error> {
-                match hash {
-                    Some(key_hash) => Self::new(source, key_hash),
-                    None => panic!("aposkj"), // TODO later
-                }
-            }
-        }
+        impl<T> CryptEncoder<T> for $struct_name<T> where T: Read {}
     };
 }
 
@@ -130,7 +120,7 @@ macro_rules! compose_encoders {
     ( $root:expr, $( $crypt_encoder:ident => $key:expr ),* ) => {{
         let cryptor = $root;
         $(
-            let cryptor = $crypt_encoder::wrap(cryptor, $key)?;
+            let cryptor = $crypt_encoder::new(cryptor, $key)?;
         )*
         cryptor
     }};
@@ -183,7 +173,7 @@ mod tests {
 
                 compose_encoders!(
                     data,
-                    $( $crypt_encoder => Some(&key_hash[..]) ),*
+                    $( $crypt_encoder => &key_hash[..] ),*
                 ).as_vec()
             }
         };
@@ -268,8 +258,8 @@ mod tests {
             .map(|(src, buf_size)| -> Result<(), Error> {
                 let mut cryptor = compose_encoders!(
                     File::open(&src).unwrap(),
-                    Encryptor => Some(&key_hash),
-                    Decryptor => Some(&key_hash)
+                    Encryptor => &key_hash,
+                    Decryptor => &key_hash
                 );
 
                 let result = cryptor.as_vec()?;

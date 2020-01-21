@@ -80,7 +80,7 @@ impl<'a> CryptFile {
                 Some(as_str) => {
                     let ciphertext: String = compose_encoders!(
                         as_str.as_bytes(),
-                        Encryptor => Some(&key_hash[..]),
+                        Encryptor => &key_hash[..],
                         TextEncoder => None
                     )
                     .as_string()?;

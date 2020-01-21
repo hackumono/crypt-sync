@@ -60,13 +60,13 @@ impl<T> TextEncoder<T>
 where
     T: Read,
 {
-    pub fn new(source: T, enc_type: EncType) -> Result<Self, Error> {
+    pub fn new(source: T, enc_type: Option<EncType>) -> Result<Self, Error> {
         TextEncoder::new_custom(
             source,
             Some(match enc_type {
-                EncType::BASE16 => &BASE16,
-                EncType::BASE32 => &BASE32,
-                EncType::BASE64 => &BASE64,
+                Some(EncType::BASE16) | None => &BASE16,
+                Some(EncType::BASE32) => &BASE32,
+                Some(EncType::BASE64) => &BASE64,
             }),
             None,
             None,
@@ -208,15 +208,7 @@ where
     }
 }
 
-impl<T> CryptEncoder<T> for TextEncoder<T>
-where
-    T: Read,
-{
-    fn wrap(source: T, hash: Option<&[u8]>) -> Result<Self, Error> {
-        debug_assert!(hash.is_none());
-        TextEncoder::new(source, EncType::BASE16)
-    }
-}
+impl<T> CryptEncoder<T> for TextEncoder<T> where T: Read {}
 
 #[cfg(test)]
 mod tests {
@@ -246,7 +238,7 @@ mod tests {
                 .into_par_iter()
                 .for_each(|(input, expected)| {
                     let input_bytes = input.as_bytes();
-                    let result = TextEncoder::new(input_bytes, EncType::BASE16)
+                    let result = TextEncoder::new(input_bytes, None)
                         .unwrap()
                         .as_string()
                         .unwrap();
@@ -282,7 +274,7 @@ mod tests {
                 .into_par_iter()
                 .for_each(|(input, expected)| {
                     let input_bytes = input.as_bytes();
-                    let result = TextEncoder::new(input_bytes, EncType::BASE32)
+                    let result = TextEncoder::new(input_bytes, Some(EncType::BASE32))
                         .unwrap()
                         .as_string()
                         .unwrap();
@@ -318,7 +310,7 @@ mod tests {
                 .into_par_iter()
                 .for_each(|(input, expected)| {
                     let input_bytes = input.as_bytes();
-                    let result = TextEncoder::new(input_bytes, EncType::BASE64)
+                    let result = TextEncoder::new(input_bytes, Some(EncType::BASE64))
                         .unwrap()
                         .as_string()
                         .unwrap();

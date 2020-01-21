@@ -18,15 +18,6 @@ pub trait CryptEncoder<T>: Read
 where
     T: Read,
 {
-    /// Wrap another struct that implements `std::io::Read`.
-    ///
-    /// # Parameters
-    /// 1. `source`
-    /// 1. `key`
-    fn wrap(source: T, key: Option<&[u8]>) -> Result<Self, Error>
-    where
-        Self: std::marker::Sized;
-
     fn write_all_to<U>(&mut self, target: &mut U, buf_size: Option<usize>) -> Result<usize, Error>
     where
         U: Write,
@@ -35,18 +26,19 @@ where
             Some(0) | None => 4096,
             Some(bs) => bs,
         };
-        let mut buffer: Vec<u8> = (0..buf_size).map(|us| us as u8).collect();
+
+        let mut buffer: Vec<u8> = (0..buf_size).map(|_| 0).collect();
+
         let mut count = 0;
-        loop {
+        Ok(loop {
             match self.read(&mut buffer[..])? {
-                0 => break,
+                0 => break count, // means we are done reading
                 bytes_read => {
-                    target.write_all(&mut buffer[0..bytes_read])?;
-                    count += bytes_read;
+                    target.write_all(&buffer[0..bytes_read])?;
+                    count += bytes_read
                 }
             }
-        }
-        Ok(count)
+        })
     }
 
     fn as_vec(&mut self) -> Result<Vec<u8>, Error> {
@@ -56,7 +48,7 @@ where
     }
 
     fn as_string(&mut self) -> Result<String, Error> {
-        let result = self.as_vec()?;
-        from_utf8(&result[..]).map(String::from).map_err(io_err)
+        let as_vec = self.as_vec()?;
+        from_utf8(&as_vec).map(String::from).map_err(io_err)
     }
 }
