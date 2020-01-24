@@ -3,6 +3,7 @@ use rayon::prelude::*;
 use std::cmp::Eq;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::ffi::OsStr;
 use std::fs::metadata;
 use std::fs::symlink_metadata;
 use std::hash::Hash;
@@ -51,9 +52,62 @@ macro_rules! eprintln_then_none {
 impl<'a> CryptFile {
     /// 1. for the root cfile,
     pub fn sync(&self, out_dir: &Path, key_hash: &[u8]) -> Result<(), Error> {
-        // for each dir in dir_map
-        //   contruct a (pathbuf, pathbuf) pair using dir_map
+        // TODO standardize the error reports
+        let temp: HashMap<PathBuf, String> = find(&self.src)
+            .par_bridge()
+            .filter_map(|opt_path_buf| match opt_path_buf {
+                // :: Result<PathBuf> -> Option<PathBuf>
+                Ok(path_buf) => Some(path_buf),
+                Err(err) => eprintln_then_none!("{}", err),
+            })
+            .filter_map(|path_buf| match path_buf.file_name().map(OsStr::to_str) {
+                Some(Some(path_str)) => {
+                    let opt_parent = path_buf.parent().map(Path::to_str);
+                    let parent_derived_hash = match opt_parent {
+                        Some(Some(parent)) if path_buf != self.src => hash_key(&parent),
+                        _ => Vec::from(key_hash),
+                    };
 
+                    let res_encoder = compose_encoders!(
+                        path_str.as_bytes(),
+                        Encryptor => &parent_derived_hash,
+                        TextEncoder => None
+                    );
+
+                    match res_encoder {
+                        Ok(mut encoder) => match encoder.as_string() {
+                            Ok(encoding) => Some((path_buf, encoding)),
+                            Err(err) => eprintln_then_none!("{}", err),
+                        },
+                        Err(err) => eprintln_then_none!("{}", err),
+                    }
+                }
+                _ => eprintln_then_none!("`{:?}` contains non utf8 chars", path_buf),
+            })
+            .collect();
+
+        let min_set = min_mkdir_set(&|| {
+            temp.keys().filter_map(|path_buf| match path_buf {
+                _ if path_buf.is_dir() => Some(path_buf.as_path()),
+                _ => None,
+            })
+        });
+        println!("{:#?}", temp);
+        println!("{:#?}", min_set);
+        /*
+                dirs.sort_by_key(|(path, _)| {
+                    let mut count = 0;
+                    let mut opt_current = Some(path.as_path());
+                    while let Some(current) = opt_current {
+                        count += 1;
+                        opt_current = current.parent();
+                    }
+                    count
+                });
+
+
+                println!("{:#?}", dirs);
+        */
         /*
         let mut cryptor = compose_encoders!(
             File::open(&src).unwrap(),
@@ -85,31 +139,10 @@ impl<'a> CryptFile {
         src: &Path,
         key_hash: &[u8],
     ) -> Result<HashMap<PathBuf, String>, Error> {
-        find(src)
-            .par_bridge()
-            .filter_map(|opt_path_buf| match opt_path_buf {
-                Ok(path_buf) => Some(path_buf),
-                Err(err) => eprintln_then_none!("{}", err),
-            });
-
         // TODO idea, why not sort then fold, and create directories as we are folding
         /*
-        // split into (dirname, ciphertext) and utf8 errors, for the same reason
-            .map(|path_buf| match path_buf.as_path().to_str() {
-                None => Err(err!("`{:?}` contains non utf8 chars", path_buf)),
-                Some(as_str) => {
-                    let ciphertext = compose_encoders!(
-                        as_str.as_bytes(),
-                        Encryptor => &key_hash[..],
-                        TextEncoder => None
-                    )
-                    .as_string()?;
 
-                    Ok((path_buf, ciphertext))
-                }
-            })
-
-            */
+        */
 
         unimplemented!()
     }
@@ -330,8 +363,12 @@ mod tests {
 
     #[test]
     fn test() {
-        let x = CryptFile::new(Path::new("Cargo.toml")).unwrap();
-        println!("{:#?}", x);
-        assert!(false);
+        let src = Path::new("src");
+        assert!(src.exists());
+        let key_hash = hash_key(&format!("soamkle!$@random key{}", line!()));
+
+        let cfile = CryptFile::new(src).unwrap();
+        cfile.sync(Path::new(""), &key_hash);
+        todo!();
     }
 }

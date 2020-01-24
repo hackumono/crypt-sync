@@ -4,6 +4,7 @@ use data_encoding_macro::*;
 use openssl::error::ErrorStack;
 use openssl::hash::hash;
 use openssl::hash::MessageDigest;
+use std::collections::HashSet;
 use std::env;
 use std::fmt::Debug;
 use std::fmt::Display;
@@ -39,6 +40,40 @@ const FILEPATH_SAFE_BASE64: Encoding = new_encoding! {
     symbols: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-",
     padding: '=',
 };
+
+/// # Parameters
+///
+/// 1. `dirs`:
+///
+/// # Returns
+///
+/// The "minimum" set of directory paths in a sense that calling `mkdir -p` on each element in the
+/// set results in the minimum number of `mkdir` calls in order to create every directory in the
+/// set.
+pub fn min_mkdir_set<'a, T>(dirs: &'a Fn() -> T) -> HashSet<PathBuf>
+where
+    T: Iterator<Item = &'a Path>,
+{
+    dirs().fold(
+        dirs().map(Path::to_path_buf).collect::<HashSet<PathBuf>>(),
+        |mut acc, path| match acc.contains(path) {
+            true => {
+                // for each dir, remove all parent direcotries from acc
+                let mut current: &Path = path;
+                loop {
+                    match current.parent() {
+                        Some(parent) => {
+                            acc.remove(parent);
+                            current = parent;
+                        }
+                        _ => break acc,
+                    }
+                }
+            }
+            false => acc,
+        },
+    )
+}
 
 // trying to avoid bs buffer logic with this
 // try to pull `size` number of bytes from source
@@ -129,7 +164,13 @@ pub fn sha512_string(data: &[u8]) -> Result<String, Error> {
 // return a len-32 hash of the given key
 #[inline]
 pub fn hash_key(key: &str) -> Vec<u8> {
-    sha512_with_len(key.as_bytes(), 32).unwrap()
+    hash_bytes(key.as_bytes())
+}
+
+// return a len-32 hash of the given key
+#[inline]
+pub fn hash_bytes(key: &[u8]) -> Vec<u8> {
+    sha512_with_len(key, 32).unwrap()
 }
 
 #[inline]

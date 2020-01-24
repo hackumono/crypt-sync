@@ -118,9 +118,12 @@ cryptor!(Decryptor, Mode::Decrypt);
 /// ```
 macro_rules! compose_encoders {
     ( $root:expr, $( $crypt_encoder:ident => $key:expr ),* ) => {{
-        let cryptor = $root;
+        let cryptor = Ok($root);
         $(
-            let cryptor = $crypt_encoder::new(cryptor, $key)?;
+            let cryptor = match cryptor {
+                Ok(c) => $crypt_encoder::new(c, $key),
+                Err(err) => Err(err),
+            };
         )*
         cryptor
     }};
@@ -174,7 +177,7 @@ mod tests {
                 compose_encoders!(
                     data,
                     $( $crypt_encoder => &key_hash[..] ),*
-                ).as_vec()
+                ).unwrap().as_vec()
             }
         };
     }
@@ -262,7 +265,7 @@ mod tests {
                     Decryptor => &key_hash
                 );
 
-                let result = cryptor.as_vec()?;
+                let result = cryptor?.as_vec()?;
 
                 let mut expected = Vec::new();
                 File::open(&src)?.read_to_end(&mut expected)?;
