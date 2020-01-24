@@ -2,6 +2,7 @@ use rayon::iter::ParallelBridge;
 use rayon::prelude::*;
 use std::cmp::Eq;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs::metadata;
 use std::fs::symlink_metadata;
 use std::hash::Hash;
@@ -26,6 +27,8 @@ enum CFileType {
     FILE,
 }
 
+/// The BASENAME of a CryptFile, whether its source is a file or a directory, is the ciphertext of
+/// its entire path whose root is the root CryptFile.
 #[derive(Clone, Debug)]
 pub struct CryptFile {
     // some temp location where the encrypted files will be stored before
@@ -46,52 +49,10 @@ macro_rules! eprintln_then_none {
 }
 
 impl<'a> CryptFile {
-    pub fn new(src: &Path) -> Result<Self, Error> {
-        let arena = mktemp_dir("", "", None).map(Arc::new)?;
-        CryptFile::new_internal(src, &arena)
-    }
-
     /// 1. for the root cfile,
     pub fn sync(&self, out_dir: &Path, key_hash: &[u8]) -> Result<(), Error> {
-        // 1. scan src to construct dir_map
-        // 2. call sync_internal
-        // (optional<path>, optional<error>)
-
-        let (dirs, errs): (Vec<Option<PathBuf>>, Vec<Option<Error>>) = find(&self.src)
-            .map(|opt_path| match opt_path {
-                // only select dirs
-                Ok(path) if path.is_dir() => (None, None),
-                Ok(path) => (Some(path), None),
-                Err(err) => (None, Some(err)),
-            })
-            .unzip();
-
-        // if any errored, return
-        match errs.into_iter().find(Option::is_some) {
-            Some(Some(err)) => Err(err)?,
-            _ => (),
-        };
-
-        dirs.into_par_iter()
-            .filter(Option::is_some)
-            .map(Option::unwrap)
-            .map(|path_buf| match path_buf.as_path().to_str() {
-                None => Err(err!("{:?} contains non utf8 chars", path_buf)),
-                Some(as_str) => {
-                    let ciphertext: String = compose_encoders!(
-                        as_str.as_bytes(),
-                        Encryptor => &key_hash[..],
-                        TextEncoder => None
-                    )
-                    .as_string()?;
-
-                    Ok((path_buf, ciphertext))
-                }
-            })
-            .filter_map(|result| match result {
-                Ok(x) => Some(x),
-                Err(err) => eprintln_then_none!("{:?}", err),
-            });
+        // for each dir in dir_map
+        //   contruct a (pathbuf, pathbuf) pair using dir_map
 
         /*
         let mut cryptor = compose_encoders!(
@@ -113,6 +74,49 @@ impl<'a> CryptFile {
             self.children.as_ref().unwrap().par_iter();
         }
         todo!()
+    }
+
+    /// # Returns
+    ///
+    /// Mapping from some filepath to the ciphertext of its BASENAME
+    ///
+    /// Therefore constructing
+    fn basename_ciphertexts(
+        src: &Path,
+        key_hash: &[u8],
+    ) -> Result<HashMap<PathBuf, String>, Error> {
+        find(src)
+            .par_bridge()
+            .filter_map(|opt_path_buf| match opt_path_buf {
+                Ok(path_buf) => Some(path_buf),
+                Err(err) => eprintln_then_none!("{}", err),
+            });
+
+        // TODO idea, why not sort then fold, and create directories as we are folding
+        /*
+        // split into (dirname, ciphertext) and utf8 errors, for the same reason
+            .map(|path_buf| match path_buf.as_path().to_str() {
+                None => Err(err!("`{:?}` contains non utf8 chars", path_buf)),
+                Some(as_str) => {
+                    let ciphertext = compose_encoders!(
+                        as_str.as_bytes(),
+                        Encryptor => &key_hash[..],
+                        TextEncoder => None
+                    )
+                    .as_string()?;
+
+                    Ok((path_buf, ciphertext))
+                }
+            })
+
+            */
+
+        unimplemented!()
+    }
+
+    pub fn new(src: &Path) -> Result<Self, Error> {
+        let arena = mktemp_dir("", "", None).map(Arc::new)?;
+        CryptFile::new_internal(src, &arena)
     }
 
     // pass optional memo map
