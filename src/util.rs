@@ -4,8 +4,12 @@ use data_encoding_macro::*;
 use openssl::error::ErrorStack;
 use openssl::hash::hash;
 use openssl::hash::MessageDigest;
+use rayon::iter::ParallelBridge;
+use rayon::prelude::*;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
+use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fs::File;
@@ -22,6 +26,7 @@ use tempfile::NamedTempFile;
 use tempfile::TempDir;
 use walkdir::WalkDir;
 
+use crate::encoder::cryptor::*;
 use crate::encoder::text_encoder::*;
 
 macro_rules! err {
@@ -31,6 +36,13 @@ macro_rules! err {
     ( $message:expr, $($arg:expr),* ) => {
         Error::new(ErrorKind::Other, format!($message, $($arg),*))
     };
+}
+
+macro_rules! eprintln_then_none {
+    ( $message:expr, $($arg:expr),* ) => {{
+        eprintln!("{}", format!($message, $($arg),*));
+        None
+    }};
 }
 
 // just like BASE64 that conforms to RFC4648; https://tools.ietf.org/search/rfc4648
@@ -50,9 +62,10 @@ const FILEPATH_SAFE_BASE64: Encoding = new_encoding! {
 /// The "minimum" set of directory paths in a sense that calling `mkdir -p` on each element in the
 /// set results in the minimum number of `mkdir` calls in order to create every directory in the
 /// set.
-pub fn min_mkdir_set<'a, T>(dirs: &'a Fn() -> T) -> HashSet<PathBuf>
+pub fn min_mkdir_set<'a, T, U>(dirs: &'a T) -> HashSet<PathBuf>
 where
-    T: Iterator<Item = &'a Path>,
+    T: Fn() -> U,
+    U: Iterator<Item = &'a Path> + 'a,
 {
     dirs().fold(
         dirs().map(Path::to_path_buf).collect::<HashSet<PathBuf>>(),
@@ -62,7 +75,7 @@ where
                 let mut current: &Path = path;
                 loop {
                     match current.parent() {
-                        Some(parent) => {
+                        Some(parent) if acc.contains(parent) => {
                             acc.remove(parent);
                             current = parent;
                         }

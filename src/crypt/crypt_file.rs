@@ -4,12 +4,14 @@ use std::cmp::Eq;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ffi::OsStr;
+use std::fs::create_dir_all;
 use std::fs::metadata;
 use std::fs::symlink_metadata;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::io::Error;
 use std::io::ErrorKind;
+use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str;
@@ -42,109 +44,14 @@ pub struct CryptFile {
     src_modified: SystemTime, // time at which src was last modified
 }
 
-macro_rules! eprintln_then_none {
-    ( $message:expr, $($arg:expr),* ) => {{
-        eprintln!("{}", format!($message, $($arg),*));
-        None
-    }};
-}
-
 impl<'a> CryptFile {
     /// 1. for the root cfile,
     pub fn sync(&self, out_dir: &Path, key_hash: &[u8]) -> Result<(), Error> {
-        // TODO standardize the error reports
-        let temp: HashMap<PathBuf, String> = find(&self.src)
-            .par_bridge()
-            .filter_map(|opt_path_buf| match opt_path_buf {
-                // :: Result<PathBuf> -> Option<PathBuf>
-                Ok(path_buf) => Some(path_buf),
-                Err(err) => eprintln_then_none!("{}", err),
-            })
-            .filter_map(|path_buf| match path_buf.file_name().map(OsStr::to_str) {
-                Some(Some(path_str)) => {
-                    let opt_parent = path_buf.parent().map(Path::to_str);
-                    let parent_derived_hash = match opt_parent {
-                        Some(Some(parent)) if path_buf != self.src => hash_key(&parent),
-                        _ => Vec::from(key_hash),
-                    };
-
-                    let res_encoder = compose_encoders!(
-                        path_str.as_bytes(),
-                        Encryptor => &parent_derived_hash,
-                        TextEncoder => None
-                    );
-
-                    match res_encoder {
-                        Ok(mut encoder) => match encoder.as_string() {
-                            Ok(encoding) => Some((path_buf, encoding)),
-                            Err(err) => eprintln_then_none!("{}", err),
-                        },
-                        Err(err) => eprintln_then_none!("{}", err),
-                    }
-                }
-                _ => eprintln_then_none!("`{:?}` contains non utf8 chars", path_buf),
-            })
-            .collect();
-
-        let min_set = min_mkdir_set(&|| {
-            temp.keys().filter_map(|path_buf| match path_buf {
-                _ if path_buf.is_dir() => Some(path_buf.as_path()),
-                _ => None,
-            })
-        });
-        println!("{:#?}", temp);
-        println!("{:#?}", min_set);
-        /*
-                dirs.sort_by_key(|(path, _)| {
-                    let mut count = 0;
-                    let mut opt_current = Some(path.as_path());
-                    while let Some(current) = opt_current {
-                        count += 1;
-                        opt_current = current.parent();
-                    }
-                    count
-                });
-
-
-                println!("{:#?}", dirs);
-        */
-        /*
-        let mut cryptor = compose_encoders!(
-            File::open(&src).unwrap(),
-            Encryptor => Some(&key_hash),
-            Decryptor => Some(&key_hash)
-        );
-        */
+        let enc_basenames = basename_ciphertexts(&self.src, key_hash);
+        let enc_paths = path_ciphertexts(&enc_basenames, key_hash);
+        println!("enc_basenames {:#?}", enc_basenames);
+        println!("enc_paths {:#?}", enc_paths);
         todo!()
-    }
-
-    fn sync_internal(
-        &self,
-        out_dir: &Path,
-        key_hash: &[u8],
-        dir_map: &HashMap<PathBuf, String>,
-    ) -> Result<(), Error> {
-        if self.is_dir() {
-            self.children.as_ref().unwrap().par_iter();
-        }
-        todo!()
-    }
-
-    /// # Returns
-    ///
-    /// Mapping from some filepath to the ciphertext of its BASENAME
-    ///
-    /// Therefore constructing
-    fn basename_ciphertexts(
-        src: &Path,
-        key_hash: &[u8],
-    ) -> Result<HashMap<PathBuf, String>, Error> {
-        // TODO idea, why not sort then fold, and create directories as we are folding
-        /*
-
-        */
-
-        unimplemented!()
     }
 
     pub fn new(src: &Path) -> Result<Self, Error> {
@@ -184,14 +91,14 @@ impl<'a> CryptFile {
                         .collect(),
                 ),
             },
-            name_in_arena: String::from(format!(
+            name_in_arena: format!(
                 "{}_{}.csync",
                 sha512_string(src.to_str().map(str::as_bytes).unwrap())?,
                 SystemTime::now()
                     .duration_since(src_modified)
                     .map_err(io_err)?
                     .as_nanos()
-            )),
+            ),
             file_type,
             arena: arena.clone(),
             src,
@@ -200,8 +107,8 @@ impl<'a> CryptFile {
     }
 
     #[inline]
-    pub fn ls(&'a self) -> Option<impl ParallelIterator<Item = CryptFile> + 'a> {
-        self.children.as_ref().map(|cs| cs.par_iter().cloned())
+    pub fn ls(&'a self) -> Option<impl ParallelIterator<Item = &'a CryptFile>> {
+        self.children.as_ref().map(|cs| cs.par_iter())
     }
 
     #[inline]
@@ -238,6 +145,101 @@ impl PartialEq for CryptFile {
 }
 
 impl Eq for CryptFile {}
+
+/// Make a mapping from some `p: PathBuf` to its ciphertext form `c: PathBuf`.
+///
+/// # Parameters
+///
+/// 1. `basename_ciphertexts`: a mapping from some path to the ciphertext that will be used as its
+///    encrypted basename
+/// 2. `key_hash`: hash of the key to use, for symmetric encryption
+///
+/// # Returns
+///
+/// A mapping from a path to its ciphertext that will be used as its encrypted path.
+///
+/// For example given a `bc = basename_ciphertexts` and some path `p = "p1/p2/p3"` will return
+/// `bc["p1"]/bc["p1/p2"]/bc["p1/p2/p3"]`.
+fn path_ciphertexts(
+    basename_ciphertexts: &HashMap<PathBuf, String>,
+    key_hash: &[u8],
+) -> HashMap<PathBuf, PathBuf> {
+    basename_ciphertexts
+        .keys()
+        .par_bridge()
+        .cloned()
+        .map(|src_path_buf| {
+            src_path_buf.components().fold(
+                (PathBuf::new(), PathBuf::new()),
+                |(mut acc, mut acc_ciphertext), comp| match comp {
+                    Component::Normal(osstr) => {
+                        acc.push(osstr);
+                        match basename_ciphertexts.get(&acc) {
+                            Some(value) => acc_ciphertext.push(value),
+                            None => (),
+                        };
+                        (acc, acc_ciphertext)
+                    }
+                    _ => (acc, acc_ciphertext),
+                },
+            )
+        })
+        .collect()
+}
+
+/// Make a mapping from each file in `source`, including itself, to its corresponding ciphertext
+/// that will be used to as its encrypted basename.
+///
+/// # Parameters
+///
+/// 1. `source`: the root of the search
+/// 2. `key_hash`: hash of the key to use, for symmetric encryption
+///
+/// # Returns
+///
+/// Some mapping `bc` such that for some path `p = [p1, p2, ..., pn]`:
+/// ```text
+/// if p is source or p.parent == None
+///     bc[p] = encrypt(pn, key_hash)
+/// else
+///     key = hash([p1, p2, ... p_{n-1}])
+///     bc[p] = encrypt(pn, key)
+/// ```
+fn basename_ciphertexts(source: &Path, key_hash: &[u8]) -> HashMap<PathBuf, String> {
+    // TODO standardize the error reports
+    find(source)
+        .par_bridge()
+        .filter_map(|opt_path_buf| match opt_path_buf {
+            // :: Result<PathBuf> -> Option<PathBuf>
+            Ok(path_buf) => Some(path_buf),
+            Err(err) => eprintln_then_none!("{}", err),
+        })
+        .map(|path_buf| match path_buf.file_name().map(OsStr::to_str) {
+            // :: PathBuf -> Result<(PathBuf, SString)>
+            Some(Some(basesname_str)) => {
+                let opt_parent = path_buf.parent().map(Path::to_str);
+                let parent_derived_hash = match opt_parent {
+                    Some(Some(parent_str)) if &path_buf != source => hash_key(&parent_str),
+                    _ => Vec::from(key_hash),
+                };
+
+                let ciphertext = compose_encoders!(
+                    basesname_str.as_bytes(),
+                    Encryptor => &parent_derived_hash,
+                    TextEncoder => None
+                )?
+                .as_string()?;
+
+                Ok((path_buf, ciphertext))
+            }
+            _ => Err(err!("`{:?}` contains non utf8 chars", path_buf)),
+        })
+        .filter_map(|res| match res {
+            Ok(v) => Some(v),
+            Err(err) => eprintln_then_none!("{}", err),
+        })
+        .collect()
+}
 
 #[cfg(test)]
 mod tests {
@@ -317,7 +319,7 @@ mod tests {
             assert_eq!(dir1.path().to_path_buf(), cdir1.source());
 
             // check cdir1's ls children
-            let cdir1_ls: HashSet<_> = cdir1.ls().unwrap().collect();
+            let cdir1_ls: HashSet<_> = cdir1.ls().unwrap().cloned().collect();
             assert_eq!(2, cdir1_ls.len());
             let cdir1_ls_bufs: HashSet<PathBuf> =
                 cdir1_ls.par_iter().map(CryptFile::source).collect();
@@ -363,12 +365,15 @@ mod tests {
 
     #[test]
     fn test() {
+        let suffix = format!(".csync.crypt_file.{}", line!());
+        let dir = mktemp_dir("", &suffix, None).unwrap();
+
         let src = Path::new("src");
         assert!(src.exists());
         let key_hash = hash_key(&format!("soamkle!$@random key{}", line!()));
 
         let cfile = CryptFile::new(src).unwrap();
-        cfile.sync(Path::new(""), &key_hash);
+        cfile.sync(dir.path(), &key_hash);
         todo!();
     }
 }
