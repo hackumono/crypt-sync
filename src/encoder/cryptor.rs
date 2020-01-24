@@ -9,6 +9,7 @@ use std::io::ErrorKind;
 use std::io::Read;
 
 use crate::crypt::crypt_encoder::*;
+use crate::encoder::text_encoder::*;
 use crate::util::*;
 
 const INITIALIZATION_VECTOR: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
@@ -236,30 +237,13 @@ mod tests {
     #[test]
     fn identitity() -> Result<(), Error> {
         let key_hash = hash_key(&format!("soamkle!$@random key{}", line!()));
-        let buffer_sizes: Vec<Option<usize>> = vec![
-            None,
-            Some(1),
-            Some(8),
-            Some(64),
-            Some(128),
-            Some(1423),
-            Some(4096),
-        ];
 
         find(Path::new("./src/"))
             .par_bridge()
             .map(Result::unwrap)
             .filter(|path_buf| path_buf.as_path().is_file())
-            .flat_map(|path_buf| {
-                // PathBuf -> PathBuf x Option<usize>
-                // essentially create pairs of (pathbuf, buffer sizes), to test various buffer sizes
-                buffer_sizes
-                    .par_iter()
-                    .cloned()
-                    .map(move |buf_size| (path_buf.clone(), buf_size))
-            })
-            .map(|(src, buf_size)| -> Result<(), Error> {
-                let mut cryptor = compose_encoders!(
+            .map(|src| -> Result<(), Error> {
+                let cryptor = compose_encoders!(
                     File::open(&src).unwrap(),
                     Encryptor => &key_hash,
                     Decryptor => &key_hash

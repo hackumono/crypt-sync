@@ -1,9 +1,6 @@
 use data_encoding::Encoding;
 use data_encoding_macro::*;
 use rayon::prelude::*;
-use std::cmp::min;
-use std::collections::VecDeque;
-use std::io::Bytes;
 use std::io::Error;
 use std::io::Read;
 

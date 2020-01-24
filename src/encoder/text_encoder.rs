@@ -1,5 +1,8 @@
 use data_encoding::Encoding;
 use data_encoding_macro::*;
+use openssl::error::ErrorStack;
+use openssl::hash::hash;
+use openssl::hash::MessageDigest;
 use rayon::prelude::*;
 use std::cmp::min;
 use std::collections::VecDeque;
@@ -31,6 +34,14 @@ const BASE32: Encoding = new_encoding! {
 // BASE64, conforms to RFC4648; https://tools.ietf.org/search/rfc4648
 const BASE64: Encoding = new_encoding! {
     symbols: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
+    padding: '=',
+};
+
+// just like BASE64
+// but '/' is replaced with '-' so that the resulting encoding can be used as
+// a filepath
+const FILEPATH_SAFE_BASE64: Encoding = new_encoding! {
+    symbols: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-",
     padding: '=',
 };
 
@@ -180,8 +191,6 @@ where
     T: Read,
 {
     fn read(&mut self, target: &mut [u8]) -> Result<usize, Error> {
-        let size = target.len();
-
         // try pushing enc buf
         if self.enc_buf.len() == 0 {
             // try populating enc_buf
@@ -209,6 +218,32 @@ where
 }
 
 impl<T> CryptEncoder<T> for TextEncoder<T> where T: Read {}
+
+/// 0 <= length <= 64
+#[inline]
+pub fn sha512_with_len(data: &[u8], length: u8) -> Result<Vec<u8>, ErrorStack> {
+    debug_assert!(length <= 64, "`{}` is not <= 64", length);
+    Ok(hash(MessageDigest::sha512(), data)?
+        .iter()
+        .cloned()
+        .take(length as usize)
+        .collect())
+}
+
+/// just like BASE64 that conforms to RFC4648; https://tools.ietf.org/search/rfc4648
+/// but '/' is replaced with '-' so that the resulting encoding can be used as
+/// a filepath
+#[inline]
+pub fn sha512_string(data: &[u8]) -> Result<String, Error> {
+    TextEncoder::new_custom(
+        &sha512_with_len(data, 64)?[..],
+        Some(&FILEPATH_SAFE_BASE64),
+        None,
+        None,
+        None,
+    )?
+    .as_string()
+}
 
 #[cfg(test)]
 mod tests {

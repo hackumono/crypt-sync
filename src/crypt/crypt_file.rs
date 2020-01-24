@@ -2,11 +2,8 @@ use rayon::iter::ParallelBridge;
 use rayon::prelude::*;
 use std::cmp::Eq;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::ffi::OsStr;
-use std::fs::create_dir_all;
 use std::fs::metadata;
-use std::fs::symlink_metadata;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::io::Error;
@@ -48,7 +45,7 @@ impl<'a> CryptFile {
     /// 1. for the root cfile,
     pub fn sync(&self, out_dir: &Path, key_hash: &[u8]) -> Result<(), Error> {
         let enc_basenames = basename_ciphertexts(&self.src, key_hash);
-        let enc_paths = path_ciphertexts(&enc_basenames, key_hash);
+        let enc_paths = path_ciphertexts(&enc_basenames);
         println!("enc_basenames {:#?}", enc_basenames);
         println!("enc_paths {:#?}", enc_paths);
         todo!()
@@ -160,10 +157,7 @@ impl Eq for CryptFile {}
 ///
 /// For example given a `bc = basename_ciphertexts` and some path `p = "p1/p2/p3"` will return
 /// `bc["p1"]/bc["p1/p2"]/bc["p1/p2/p3"]`.
-fn path_ciphertexts(
-    basename_ciphertexts: &HashMap<PathBuf, String>,
-    key_hash: &[u8],
-) -> HashMap<PathBuf, PathBuf> {
+fn path_ciphertexts(basename_ciphertexts: &HashMap<PathBuf, String>) -> HashMap<PathBuf, PathBuf> {
     basename_ciphertexts
         .keys()
         .par_bridge()
@@ -373,7 +367,7 @@ mod tests {
         let key_hash = hash_key(&format!("soamkle!$@random key{}", line!()));
 
         let cfile = CryptFile::new(src).unwrap();
-        cfile.sync(dir.path(), &key_hash);
+        cfile.sync(dir.path(), &key_hash).unwrap();
         todo!();
     }
 }
