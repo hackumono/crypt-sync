@@ -219,32 +219,6 @@ where
 
 impl<T> CryptEncoder<T> for TextEncoder<T> where T: Read {}
 
-/// 0 <= length <= 64
-#[inline]
-pub fn sha512_with_len(data: &[u8], length: u8) -> Result<Vec<u8>, ErrorStack> {
-    debug_assert!(length <= 64, "`{}` is not <= 64", length);
-    Ok(hash(MessageDigest::sha512(), data)?
-        .iter()
-        .cloned()
-        .take(length as usize)
-        .collect())
-}
-
-/// just like BASE64 that conforms to RFC4648; https://tools.ietf.org/search/rfc4648
-/// but '/' is replaced with '-' so that the resulting encoding can be used as
-/// a filepath
-#[inline]
-pub fn sha512_string(data: &[u8]) -> Result<String, Error> {
-    TextEncoder::new_custom(
-        &sha512_with_len(data, 64)?[..],
-        Some(&FILEPATH_SAFE_BASE64),
-        None,
-        None,
-        None,
-    )?
-    .as_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

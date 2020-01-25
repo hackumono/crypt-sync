@@ -10,6 +10,7 @@ use std::io::Read;
 
 use crate::crypt::crypt_encoder::*;
 use crate::encoder::text_encoder::*;
+use crate::hasher::*;
 use crate::util::*;
 
 const INITIALIZATION_VECTOR: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
@@ -40,7 +41,7 @@ macro_rules! cryptor {
             /// - `source`: some struct that impls `std::io::Read` that this struct wraps around
             /// - `key_hash`: length-32 hash to be used as a key for (en|de)cryption
             pub fn new(source: T, key_hash: &[u8]) -> Result<Self, Error> {
-                assert_eq!(32, key_hash.len());
+                assert!(key_hash.len() >= 32);
 
                 let cipher = Cipher::aes_256_cfb128();
                 Ok(Self {
@@ -50,7 +51,7 @@ macro_rules! cryptor {
                     encoder: Crypter::new(
                         cipher,
                         $crypter_mode, // one of openssl::symm::Mode
-                        key_hash,
+                        &key_hash[..32],
                         Some(&INITIALIZATION_VECTOR),
                     )
                     .map_err(|err| err!("{}", err))?,
@@ -142,7 +143,7 @@ mod tests {
             (
                 "",
                 "1 !asd9-1!#$@",
-                vec![139, 251, 56, 203, 88, 150, 55, 76, 231, 180, 185, 217, 21],
+                vec![252, 111, 103, 194, 120, 164, 31, 175, 207, 12, 5, 198, 106],
             ),
             // empty key empty data
             ("", "", vec![]),
@@ -152,18 +153,20 @@ mod tests {
             (
                 "12-39uaszASD!@ z",
                 "1 !asd9-1!#$@",
-                vec![72, 235, 159, 107, 95, 26, 136, 136, 180, 73, 27, 113, 180],
+                vec![
+                    144, 165, 146, 194, 142, 99, 137, 21, 227, 252, 221, 193, 208,
+                ],
             ),
             // nonempty key long data
             (
                 "12-39uaszASD!@ z",
                 "1 !asd9-1!#$@aoij!@#$ *((_Z!)  !@#$poaksfpokasopdkop12@#!@$@#&(Q%AWDSF(U",
                 vec![
-                    72, 235, 159, 107, 95, 26, 136, 136, 180, 73, 27, 113, 180, 129, 175, 181, 16,
-                    52, 181, 210, 40, 126, 227, 246, 105, 142, 50, 221, 101, 35, 240, 135, 85, 57,
-                    123, 118, 20, 96, 91, 55, 181, 107, 149, 128, 181, 0, 22, 204, 239, 130, 146,
-                    141, 159, 7, 209, 3, 16, 43, 182, 111, 1, 220, 7, 10, 191, 188, 141, 108, 73,
-                    203, 15, 45,
+                    144, 165, 146, 194, 142, 99, 137, 21, 227, 252, 221, 193, 208, 63, 185, 21,
+                    164, 203, 209, 9, 119, 101, 178, 4, 199, 57, 232, 166, 233, 4, 205, 224, 245,
+                    25, 180, 178, 159, 128, 166, 227, 152, 218, 46, 186, 118, 115, 68, 17, 173, 21,
+                    197, 210, 7, 19, 152, 15, 190, 27, 219, 232, 45, 161, 193, 32, 54, 2, 83, 197,
+                    94, 250, 52, 229,
                 ],
             ),
         ]
@@ -172,8 +175,7 @@ mod tests {
     macro_rules! encoder_pure {
         ( $fn_name:ident, $( $crypt_encoder:ident ),* ) => {
             fn $fn_name(unhashed_key: &str, data: &[u8]) -> Result<Vec<u8>, Error> {
-                let unhashed_key_bytes = unhashed_key.as_bytes();
-                let key_hash = sha512_with_len(unhashed_key_bytes, 32).unwrap();
+                let key_hash = hash_key(unhashed_key);
 
                 compose_encoders!(
                     data,

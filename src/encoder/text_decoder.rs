@@ -4,8 +4,8 @@ use rayon::prelude::*;
 use std::io::Error;
 use std::io::Read;
 
-use crate::crypt::crypt_encoder::*;
-use crate::encoder::text_encoder::*;
+pub use crate::crypt::crypt_encoder::*;
+pub use crate::encoder::text_encoder::*;
 use crate::util::*;
 
 // BASE16, conforms to RFC4648; https://tools.ietf.org/search/rfc4648
