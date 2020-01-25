@@ -91,7 +91,7 @@ impl<'a> CryptFile {
             },
             name_in_arena: format!(
                 "{}_{}.csync",
-                hash_base64_filesafe(src.to_str().unwrap())?,
+                hash_base64_pathsafe(src.to_str().unwrap())?,
                 SystemTime::now()
                     .duration_since(src_modified)
                     .map_err(io_err)?

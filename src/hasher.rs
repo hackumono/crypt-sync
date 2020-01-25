@@ -9,26 +9,30 @@ use std::num::NonZeroU32;
 use crate::encoder::text_decoder::*;
 use crate::util::*;
 
-static PBKDF2_ALG: pbkdf2::Algorithm = pbkdf2::PBKDF2_HMAC_SHA512;
 const CREDENTIAL_LEN: usize = digest::SHA512_OUTPUT_LEN;
+
+const PBKDF2_NUM_ITER: u32 = 1 << 14; // 2^13 = 16384
+
+static PBKDF2_ALG: pbkdf2::Algorithm = pbkdf2::PBKDF2_HMAC_SHA512;
 
 // return a len-32 hash of the given key
 pub fn hash_key(key: &str) -> Vec<u8> {
     let mut to_store = [0u8; CREDENTIAL_LEN];
     pbkdf2::derive(
         PBKDF2_ALG,
-        NonZeroU32::new(4096).unwrap(),
+        NonZeroU32::new(PBKDF2_NUM_ITER).unwrap(),
         &(0..16).collect::<Vec<_>>(),
         key.as_bytes(),
         &mut to_store,
     );
+    debug_assert_eq!(64, to_store.len());
     to_store.into_iter().copied().collect()
 }
 
 #[inline]
-pub fn hash_base64_filesafe(key: &str) -> Result<String, Error> {
+pub fn hash_base64_pathsafe(key: &str) -> Result<String, Error> {
     let hash = hash_key(key);
-    TextEncoder::new(&hash[..], Some(EncType::BASE64))?.as_string()
+    TextEncoder::new(&hash[..], Some(EncType::BASE64_PATHSAFE))?.as_string()
 }
 
 #[cfg(test)]

@@ -8,6 +8,7 @@ pub use crate::crypt::crypt_encoder::*;
 pub use crate::encoder::text_encoder::*;
 use crate::util::*;
 
+// TODO somehow reuse htese from text encoder
 // BASE16, conforms to RFC4648; https://tools.ietf.org/search/rfc4648
 const BASE16: Encoding = new_encoding! {
     symbols: "0123456789ABCDEF",
@@ -23,6 +24,14 @@ const BASE32: Encoding = new_encoding! {
 // BASE64, conforms to RFC4648; https://tools.ietf.org/search/rfc4648
 const BASE64: Encoding = new_encoding! {
     symbols: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
+    padding: '=',
+};
+
+// just like BASE64
+// but '/' is replaced with '-' so that the resulting encoding can be used as
+// a filepath
+const BASE64_PATHSAFE: Encoding = new_encoding! {
+    symbols: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-",
     padding: '=',
 };
 
@@ -46,6 +55,7 @@ where
                     Some(EncType::BASE16) | None => &BASE16,
                     Some(EncType::BASE32) => &BASE32,
                     Some(EncType::BASE64) => &BASE64,
+                    Some(EncType::BASE64_PATHSAFE) => &BASE64_PATHSAFE,
                 }),
                 Some(Box::new(|encoding, data| {
                     Ok(Vec::from(encoding.decode(data).map_err(io_err)?))
