@@ -137,13 +137,15 @@ mod tests {
     use std::fs::File;
     use std::path::Path;
 
+    const HASH_NUM_ITER: u32 = 1 << 8; // 2^8 = 256
+
     fn test_data() -> Vec<(&'static str, &'static str, Vec<u8>)> {
         vec![
             // empty key nonempty data
             (
                 "",
                 "1 !asd9-1!#$@",
-                vec![160, 153, 177, 75, 213, 151, 129, 10, 17, 218, 222, 43, 200],
+                vec![33, 9, 248, 59, 13, 239, 43, 217, 185, 216, 192, 208, 187],
             ),
             // empty key empty data
             ("", "", vec![]),
@@ -153,18 +155,18 @@ mod tests {
             (
                 "12-39uaszASD!@ z",
                 "1 !asd9-1!#$@",
-                vec![51, 43, 7, 17, 240, 98, 202, 217, 191, 0, 224, 201, 85],
+                vec![218, 83, 210, 197, 203, 154, 242, 186, 200, 27, 161, 220, 10],
             ),
             // nonempty key long data
             (
                 "12-39uaszASD!@ z",
                 "1 !asd9-1!#$@aoij!@#$ *((_Z!)  !@#$poaksfpokasopdkop12@#!@$@#&(Q%AWDSF(U",
                 vec![
-                    51, 43, 7, 17, 240, 98, 202, 217, 191, 0, 224, 201, 85, 167, 251, 105, 138,
-                    122, 18, 85, 62, 20, 55, 232, 123, 55, 162, 41, 65, 189, 227, 175, 1, 54, 142,
-                    63, 81, 213, 232, 159, 162, 154, 17, 247, 106, 43, 174, 235, 150, 87, 18, 216,
-                    189, 85, 247, 176, 181, 47, 42, 225, 19, 131, 208, 183, 72, 149, 147, 16, 25,
-                    118, 102, 55,
+                    218, 83, 210, 197, 203, 154, 242, 186, 200, 27, 161, 220, 10, 12, 105, 153, 6,
+                    221, 43, 132, 21, 227, 30, 63, 82, 180, 160, 20, 246, 62, 67, 97, 59, 0, 147,
+                    118, 76, 226, 124, 167, 164, 119, 241, 241, 134, 24, 223, 151, 228, 90, 202,
+                    81, 191, 150, 86, 27, 37, 183, 105, 242, 91, 179, 97, 77, 194, 20, 207, 194,
+                    192, 193, 32, 132,
                 ],
             ),
         ]
@@ -173,7 +175,7 @@ mod tests {
     macro_rules! encoder_pure {
         ( $fn_name:ident, $( $crypt_encoder:ident ),* ) => {
             fn $fn_name(unhashed_key: &str, data: &[u8]) -> Result<Vec<u8>, Error> {
-                let key_hash = hash_key(unhashed_key);
+                let key_hash = hash_key_custom_iter(unhashed_key, HASH_NUM_ITER);
 
                 compose_encoders!(
                     data,
@@ -236,7 +238,8 @@ mod tests {
 
     #[test]
     fn identitity() -> Result<(), Error> {
-        let key_hash = hash_key(&format!("soamkle!$@random key{}", line!()));
+        let key_hash =
+            hash_key_custom_iter(&format!("soamkle!$@random key{}", line!()), HASH_NUM_ITER);
 
         find(Path::new("./src/"))
             .par_bridge()
