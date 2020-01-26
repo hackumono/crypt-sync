@@ -153,18 +153,8 @@ fn modified(source: &Path) -> Result<SystemTime, Error> {
 }
 
 fn arena_name(source: &Path) -> Result<String, Error> {
-    let source_modified = modified(source)?;
     let source_str = source.to_str().ok_or(err!("{:?}", source))?;
-
-    Ok(format!(
-        "{}.{}.csync",
-        hash_base64_pathsafe(source_str)?,
-        SystemTime::now()
-            .duration_since(source_modified)
-            .as_ref()
-            .map(Duration::as_nanos)
-            .unwrap_or(0)
-    ))
+    Ok(format!("{}.csync", hash_base64_pathsafe(source_str)?))
 }
 
 #[cfg(test)]
