@@ -15,6 +15,8 @@ const PBKDF2_NUM_ITER: u32 = 1 << 17; // 2^17 = 131,072
 
 static PBKDF2_ALG: pbkdf2::Algorithm = pbkdf2::PBKDF2_HMAC_SHA512;
 
+const_assert!(CREDENTIAL_LEN == 64);
+
 // return a len-32 hash of the given key
 #[inline]
 pub fn hash_key(key: &str) -> Vec<u8> {
@@ -30,7 +32,6 @@ pub fn hash_key_custom_iter(key: &str, num_iter: u32) -> Vec<u8> {
         key.as_bytes(),
         &mut to_store[..],
     );
-    debug_assert_eq!(64, to_store.len());
     to_store
 }
 

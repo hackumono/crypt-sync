@@ -135,8 +135,12 @@ fn basename_ciphertexts(source: &Path, key_hash: &[u8]) -> HashMap<PathBuf, Stri
                     TextEncoder => None
                 )?
                 .as_string()?;
+                let ciphertext_filename = match ciphertext {
+                    _ if path_buf.is_file() => format!("{}.csync", ciphertext),
+                    _ => ciphertext,
+                };
 
-                Ok((path_buf, ciphertext))
+                Ok((path_buf, ciphertext_filename))
             }
             _ => Err(err!("`{:?}` contains non utf8 chars", path_buf)),
         })
@@ -160,4 +164,13 @@ fn arena_name(source: &Path) -> Result<String, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn temp() {
+        let hash = hash_key_custom_iter("aoisjfk1", 16);
+        let out_dir = mktemp_dir("", "", None).unwrap();
+        let syncer = CryptSyncer::new(Path::new("src/")).unwrap();
+        syncer.sync(&out_dir.path(), &hash[..]);
+        assert!(false);
+    }
 }
