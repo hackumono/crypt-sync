@@ -47,14 +47,14 @@ const BASE64_PATHSAFE: Encoding = new_encoding! {
 };
 
 /// Customizable binary-to-text encoding
-pub struct TextEncoder<T>
+pub struct TextEncoder<R>
 where
-    T: Read,
+    R: Read,
 {
     encoding: Encoding, // what does the acutal encoding
     encoder: Box<dyn Fn(&Encoding, &[u8]) -> Result<Vec<u8>, Error>>,
     block_size: usize, // min number of input bytes that encode to a pad-less output
-    source: Bytes<T>,
+    source: Bytes<R>,
 
     // buffers to hold leftovers from ...
     src_buf: VecDeque<u8>, // input bytes from the source
@@ -68,11 +68,11 @@ where
     src_buf_pull_size: usize, // ... `src_buf` ...
 }
 
-impl<T> TextEncoder<T>
+impl<R> TextEncoder<R>
 where
-    T: Read,
+    R: Read,
 {
-    pub fn new(source: T, enc_type: Option<EncType>) -> Result<Self, Error> {
+    pub fn new(source: R, enc_type: Option<EncType>) -> Result<Self, Error> {
         TextEncoder::new_custom(
             source,
             Some(match enc_type {
@@ -98,7 +98,7 @@ where
     /// 1. `encoding`
     /// 1. `buf_size`: size of the buffers, in bytes. If `None` then `2048` will be used.
     pub fn new_custom(
-        source: T,
+        source: R,
         encoding: Option<&Encoding>,
         encoder: Option<Box<dyn Fn(&Encoding, &[u8]) -> Result<Vec<u8>, Error>>>,
         block_sizer: Option<Box<dyn Fn(&Encoding) -> usize>>,
@@ -188,9 +188,9 @@ where
 
 // read 40 bits at a time, because base32 needs 5bit, whereas a byte is 8 bits
 // read 5 bytes at a time
-impl<T> Read for TextEncoder<T>
+impl<R> Read for TextEncoder<R>
 where
-    T: Read,
+    R: Read,
 {
     fn read(&mut self, target: &mut [u8]) -> Result<usize, Error> {
         // try pushing enc buf
@@ -219,7 +219,7 @@ where
     }
 }
 
-impl<T> CryptEncoder<T> for TextEncoder<T> where T: Read {}
+impl<R> CryptEncoder<R> for TextEncoder<R> where R: Read {}
 
 #[cfg(test)]
 mod tests {

@@ -21,18 +21,18 @@ macro_rules! cryptor {
     // `$struct_name` => Encryptor | Decryptor | ..
     // `$crypter_mode` => MODE::Encrypt | MODE::Decrypt
     ( $struct_name:ident, $crypter_mode:expr ) => {
-        pub struct $struct_name<T>
+        pub struct $struct_name<R>
         where
-            T: Read,
+            R: Read,
         {
             block_size: usize, // used by `openssl::symm::Crypter`
             encoder: Crypter,  // what does the actual work
-            source: Bytes<T>,  // wrap around `T` as `Bytes` for ease of use
+            source: Bytes<R>,  // wrap around `R` as `Bytes` for ease of use
         }
 
-        impl<T> $struct_name<T>
+        impl<R> $struct_name<R>
         where
-            T: Read,
+            R: Read,
         {
             /// `wrap` just calls this method
             ///
@@ -40,7 +40,7 @@ macro_rules! cryptor {
             ///
             /// - `source`: some struct that impls `std::io::Read` that this struct wraps around
             /// - `key_hash`: length-32 hash to be used as a key for (en|de)cryption
-            pub fn new(source: T, key_hash: &[u8]) -> Result<Self, Error> {
+            pub fn new(source: R, key_hash: &[u8]) -> Result<Self, Error> {
                 assert!(key_hash.len() >= 32);
 
                 let cipher = Cipher::aes_256_cfb128();
@@ -59,15 +59,18 @@ macro_rules! cryptor {
             }
         }
 
-        impl<T> Read for $struct_name<T>
+        impl<R> Read for $struct_name<R>
         where
-            T: Read,
+            R: Read,
         {
             fn read(&mut self, target: &mut [u8]) -> Result<usize, Error> {
-                // `update` panics if `output.len() < input.len() + block_size`
-                //                    `output.len() - block_size  < input.len()`
-                //  when target.len() - self.block_size == 0, input size is set to 1
-                //  still don't understand the implications of target.len() being 1
+                // panics if `output.len() < input.len() + block_size`
+                // meaning the following must hold:
+                //   output.len()              >= input.len() + block_size
+                //   output.len() - block_size >= input.len()
+                //
+                // NOTE when target.len() - self.block_size == 0, input size is set to 1
+                // still don't understand the implications of target.len() being 1
                 let input_size = std::cmp::max(1, target.len() - self.block_size);
                 if input_size == 1 {
                     assert_eq!(1, self.block_size);
@@ -79,11 +82,8 @@ macro_rules! cryptor {
                     None => Ok(0), // done reading
                     Some(buffer) => {
                         match self.encoder.update(&buffer, target).map_err(io_err)? {
-                            0 => {
-                                // if 0, assume that we are done so finalize the encoder
-                                assert_eq!(None, pull(&mut self.source, input_size).unwrap());
-                                self.encoder.finalize(&mut target[..]).map_err(io_err)
-                            }
+                            // if 0, assume that we are done so finalize the encoder
+                            0 => self.encoder.finalize(&mut target[..]).map_err(io_err),
                             bytes_read => Ok(bytes_read),
                         }
                     }
@@ -91,7 +91,7 @@ macro_rules! cryptor {
             }
         }
 
-        impl<T> CryptEncoder<T> for $struct_name<T> where T: Read {}
+        impl<R> CryptEncoder<R> for $struct_name<R> where R: Read {}
     };
 }
 
@@ -175,7 +175,7 @@ mod tests {
     macro_rules! encoder_pure {
         ( $fn_name:ident, $( $crypt_encoder:ident ),* ) => {
             fn $fn_name(unhashed_key: &str, data: &[u8]) -> Result<Vec<u8>, Error> {
-                let key_hash = hash_key_custom_iter(unhashed_key, HASH_NUM_ITER);
+                let key_hash = hash_bytes_custom_iter(unhashed_key, HASH_NUM_ITER);
 
                 compose_encoders!(
                     data,
@@ -239,7 +239,7 @@ mod tests {
     #[test]
     fn identitity() -> Result<(), Error> {
         let key_hash =
-            hash_key_custom_iter(&format!("soamkle!$@random key{}", line!()), HASH_NUM_ITER);
+            hash_bytes_custom_iter(&format!("soamkle!$@random key{}", line!()), HASH_NUM_ITER);
 
         find(Path::new("./src/"))
             .par_bridge()

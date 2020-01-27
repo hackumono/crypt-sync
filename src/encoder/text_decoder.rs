@@ -36,18 +36,18 @@ const BASE64_PATHSAFE: Encoding = new_encoding! {
 };
 
 /// Customizable binary-to-text encoding
-pub struct TextDecoder<T>
+pub struct TextDecoder<R>
 where
-    T: Read,
+    R: Read,
 {
-    decoder: TextEncoder<T>,
+    decoder: TextEncoder<R>,
 }
 
-impl<T> TextDecoder<T>
+impl<R> TextDecoder<R>
 where
-    T: Read,
+    R: Read,
 {
-    pub fn new(source: T, enc_type: Option<EncType>) -> Result<Self, Error> {
+    pub fn new(source: R, enc_type: Option<EncType>) -> Result<Self, Error> {
         Ok(TextDecoder {
             decoder: TextEncoder::new_custom(
                 source,
@@ -74,16 +74,16 @@ where
     }
 }
 
-impl<T> Read for TextDecoder<T>
+impl<R> Read for TextDecoder<R>
 where
-    T: Read,
+    R: Read,
 {
     fn read(&mut self, target: &mut [u8]) -> Result<usize, Error> {
         self.decoder.read(target)
     }
 }
 
-impl<T> CryptEncoder<T> for TextDecoder<T> where T: Read {}
+impl<R> CryptEncoder<R> for TextDecoder<R> where R: Read {}
 
 #[cfg(test)]
 mod tests {

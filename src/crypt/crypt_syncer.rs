@@ -76,17 +76,19 @@ fn path_ciphertexts(basename_ciphertexts: &HashMap<PathBuf, String>) -> HashMap<
         .cloned()
         .map(|source_path_buf| {
             source_path_buf.components().fold(
+                // initial value: tuple (acc_src, acc_enc)
                 (PathBuf::new(), PathBuf::new()),
-                |(mut acc_source, mut acc_ciphertext), comp| match comp {
-                    Component::Normal(osstr) => {
-                        acc_source.push(osstr);
-                        match basename_ciphertexts.get(&acc_source) {
-                            Some(value) => acc_ciphertext.push(value),
+                //
+                |(mut acc_src, mut acc_enc), comp| match comp {
+                    Component::Normal(component) => {
+                        acc_src.push(component);
+                        match basename_ciphertexts.get(&acc_src) {
+                            Some(value) => acc_enc.push(value),
                             None => (),
                         };
-                        (acc_source, acc_ciphertext)
+                        (acc_src, acc_enc)
                     }
-                    _ => (acc_source, acc_ciphertext),
+                    _ => (acc_src, acc_enc),
                 },
             )
         })
@@ -125,7 +127,7 @@ fn basename_ciphertexts(source: &Path, key_hash: &[u8]) -> HashMap<PathBuf, Stri
             Some(Some(basesname_str)) => {
                 let opt_parent = path_buf.parent().map(Path::to_str);
                 let parent_derived_hash = match opt_parent {
-                    Some(Some(parent_str)) if &path_buf != source => hash_key(&parent_str),
+                    Some(Some(parent_str)) if &path_buf != source => hash_bytes(&parent_str),
                     _ => Vec::from(key_hash),
                 };
 
@@ -135,12 +137,8 @@ fn basename_ciphertexts(source: &Path, key_hash: &[u8]) -> HashMap<PathBuf, Stri
                     TextEncoder => None
                 )?
                 .as_string()?;
-                let ciphertext_filename = match ciphertext {
-                    _ if path_buf.is_file() => format!("{}.csync", ciphertext),
-                    _ => ciphertext,
-                };
 
-                Ok((path_buf, ciphertext_filename))
+                Ok((path_buf, ciphertext))
             }
             _ => Err(err!("`{:?}` contains non utf8 chars", path_buf)),
         })
@@ -167,7 +165,7 @@ mod tests {
 
     #[test]
     fn temp() {
-        let hash = hash_key_custom_iter("aoisjfk1", 16);
+        let hash = hash_bytes_custom_iter("aoisjfk1", 16);
         let out_dir = mktemp_dir("", "", None).unwrap();
         let syncer = CryptSyncer::new(Path::new("src/")).unwrap();
         syncer.sync(&out_dir.path(), &hash[..]);

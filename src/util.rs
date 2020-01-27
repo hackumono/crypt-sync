@@ -42,10 +42,10 @@ macro_rules! eprintln_then_none {
 /// The "minimum" set of directory paths in a sense that calling `mkdir -p` on each element in the
 /// set results in the minimum number of `mkdir` calls in order to create every directory in the
 /// set.
-pub fn min_mkdir_set<'a, T, U>(dirs: &'a T) -> HashSet<PathBuf>
+pub fn min_mkdir_set<'a, F, I>(dirs: &'a F) -> HashSet<PathBuf>
 where
-    T: Fn() -> U,
-    U: Iterator<Item = &'a Path>,
+    F: Fn() -> I,
+    I: Iterator<Item = &'a Path>,
 {
     dirs().fold(
         dirs().map(Path::to_path_buf).collect::<HashSet<PathBuf>>(),
@@ -72,9 +72,9 @@ where
 // try to pull `size` number of bytes from source
 // returns None instead of an empty vec because it looks cleaner when
 // matching
-pub fn pull<T>(source: &mut Bytes<T>, size: usize) -> Result<Option<Vec<u8>>, Error>
+pub fn pull<R>(source: &mut Bytes<R>, size: usize) -> Result<Option<Vec<u8>>, Error>
 where
-    T: Read,
+    R: Read,
 {
     let mut buffer = Vec::with_capacity(size);
 
@@ -96,9 +96,9 @@ where
 }
 
 #[inline]
-pub fn io_err<T>(error: T) -> Error
+pub fn io_err<D>(error: D) -> Error
 where
-    T: Debug,
+    D: Debug,
 {
     err!("{:?}", error)
 }

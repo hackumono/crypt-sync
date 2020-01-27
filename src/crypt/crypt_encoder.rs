@@ -14,20 +14,16 @@ use crate::util::*;
 ///
 /// For example encrypting the compressed content of a file may look something like
 /// `Encryptor::wrap(Compressor::wrap(some_file))`.
-pub trait CryptEncoder<T>: Read
+pub trait CryptEncoder<R>: Read
 where
-    T: Read,
+    R: Read,
 {
-    fn write_all_to<U>(&mut self, target: &mut U, buf_size: Option<usize>) -> Result<usize, Error>
+    fn write_all_to<U>(&mut self, target: &mut U) -> Result<usize, Error>
     where
         U: Write,
     {
-        let buf_size = match buf_size {
-            Some(0) | None => 4096,
-            Some(bs) => bs,
-        };
-
-        let mut buffer: Vec<u8> = (0..buf_size).map(|_| 0).collect();
+        const BUFFER_SIZE: usize = 4096;
+        let mut buffer: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
 
         let mut count = 0;
         Ok(loop {
@@ -43,7 +39,7 @@ where
 
     fn as_vec(&mut self) -> Result<Vec<u8>, Error> {
         let mut result: Vec<u8> = Vec::new();
-        self.write_all_to(&mut result, None)?;
+        self.write_all_to(&mut result)?;
         Ok(result)
     }
 
