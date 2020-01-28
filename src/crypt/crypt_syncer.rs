@@ -3,7 +3,10 @@ use rayon::prelude::*;
 use std::cmp::Eq;
 use std::collections::HashMap;
 use std::ffi::OsStr;
+use std::fs::create_dir_all;
 use std::fs::metadata;
+use std::fs::rename;
+use std::fs::File;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::io::Error;
@@ -19,6 +22,7 @@ use tempfile::TempDir;
 
 use crate::encoder::cryptor::*;
 use crate::encoder::text_encoder::*;
+use crate::encoder::zstd_encoder::*;
 use crate::hasher::*;
 use crate::util::*;
 
@@ -33,14 +37,52 @@ pub struct CryptSyncer {
 impl<'a> CryptSyncer {
     /// 1. for the root cfile,
     pub fn sync(&self, out_dir: &Path, key_hash: &[u8]) -> Result<(), Error> {
-        let min_set = min_mkdir_set(&self.source);
-        println!("min_set {:#?}", min_set);
+        assert!(out_dir.exists());
+        assert!(out_dir.is_dir());
+        let src_to_target = {
+            let src_to_target_basename = basename_ciphertexts(&self.source, key_hash);
+            path_ciphertexts(&src_to_target_basename)
+        };
 
-        let enc_basenames = basename_ciphertexts(&self.source, key_hash);
-        let enc_paths = path_ciphertexts(&enc_basenames);
-        drop(enc_basenames);
+        // create the directory structure in `out_dir`
+        min_mkdir_set(&self.source)
+            .into_par_iter()
+            .map(|dir_path| src_to_target.get(&dir_path)) // encrypt
+            .map(Option::unwrap)
+            .map(|dir_path| out_dir.join(dir_path))   // put it in out_dir
+            .map(create_dir_all)                      // create
+            .for_each(Result::unwrap); // exit early
 
-        println!("enc_paths {:#?}", enc_paths);
+        src_to_target
+            .par_iter()
+            .filter(|(source, _)| source.is_file())
+            .map(|(source, target_basename)| {
+                let arena_basename = arena_basename(source)?;
+                let arena_path = self.arena.path().join(arena_basename);
+                let target = out_dir.join(target_basename);
+                Ok((source, arena_path, target))
+            })
+            .filter_map(|res_tuple: Result<_, Error>| match res_tuple {
+                Ok(tuple) => Some(tuple),
+                Err(err) => eprintln_then_none!("{}", err),
+            })
+            .map(|(source, temp, target)| {
+                let mut encoder = compose_encoders!(
+                    File::open(source).unwrap(),
+                    ZstdEncoder => None,
+                    Encryptor => key_hash
+                )
+                .unwrap(); // TODO handle errors later
+                encoder.write_all_to(&mut File::create(&temp).unwrap());
+                (temp, target)
+            })
+            .for_each(|(temp, target)| {
+                debug_assert!(temp.exists());
+                debug_assert!(!target.exists());
+                rename(temp, target).unwrap()
+            });
+        println!("src_to_target {:#?}", src_to_target);
+        find(out_dir).for_each(|x| println!("in outdir: {:?}", x));
         todo!()
     }
 
@@ -160,9 +202,9 @@ fn modified(source: &Path) -> Result<SystemTime, Error> {
     metadata(source)?.modified()
 }
 
-fn arena_name(source: &Path) -> Result<String, Error> {
-    let src_bytes = source.to_str().ok_or(err!("{:?}", source))?.as_bytes();
-    Ok(format!("{}.csync", hash_base64_pathsafe(src_bytes)?))
+fn arena_basename(source: &Path) -> Result<String, Error> {
+    let bytes = source.to_str().ok_or(err!("{:?}", source))?.as_bytes();
+    hash_base64_pathsafe(bytes)
 }
 
 #[cfg(test)]

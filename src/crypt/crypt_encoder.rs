@@ -28,7 +28,11 @@ where
         let mut count = 0;
         Ok(loop {
             match self.read(&mut buffer[..])? {
-                0 => break count, // means we are done reading
+                0 => {
+                    // means we are done reading
+                    target.flush()?;
+                    break count;
+                }
                 bytes_read => {
                     target.write_all(&buffer[0..bytes_read])?;
                     count += bytes_read
