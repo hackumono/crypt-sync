@@ -4,6 +4,7 @@ use std::io::Read;
 use zstd::stream::read::Decoder;
 
 use crate::crypt::crypt_encoder::*;
+use crate::encoder::zstd_encoder::*;
 
 pub struct ZstdDecoder<R>
 where
@@ -16,7 +17,7 @@ impl<R> ZstdDecoder<R>
 where
     R: Read,
 {
-    pub fn new(source: R) -> Result<Self, Error> {
+    pub fn new(source: R, _unused: Option<i32>) -> Result<Self, Error> {
         Ok(Self {
             decoder: Decoder::new(source)?,
         })
@@ -33,3 +34,33 @@ where
 }
 
 impl<R> CryptEncoder<R> for ZstdDecoder<R> where R: Read {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::encoder::zstd_encoder::*;
+    use crate::util::*;
+    use rayon::iter::ParallelBridge;
+    use rayon::prelude::*;
+
+    // make sure that f x = Decoder Encoder x = x
+    #[test]
+    fn parametrized() {
+        (10..15)
+            .map(|shift_count| 1 << shift_count)
+            .par_bridge()
+            .map(|size| drng(size))
+            .for_each(|input_bytes| {
+                let result = compose_encoders!(
+                    &input_bytes[..],
+                    ZstdEncoder => None,
+                    ZstdDecoder => None
+                )
+                .unwrap()
+                .as_vec()
+                .unwrap();
+
+                assert_eq!(input_bytes, result);
+            });
+    }
+}

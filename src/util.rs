@@ -1,3 +1,8 @@
+use rand_chacha::rand_core::RngCore;
+use rand_chacha::rand_core::SeedableRng;
+use rand_chacha::ChaCha8Rng;
+use rayon::iter::ParallelBridge;
+use rayon::prelude::*;
 use std::collections::HashSet;
 use std::env;
 use std::fmt::Debug;
@@ -31,6 +36,28 @@ macro_rules! eprintln_then_none {
         eprintln!("{}", format!($message, $($arg),*));
         None
     }};
+}
+
+// random numbers in range [32, 126]
+pub fn drng(num_bytes: u16) -> Vec<u8> {
+    let seed: [u8; 32] = [0; 32];
+    let mut rng = ChaCha8Rng::from_seed(seed);
+
+    let left: f64 = 32.0;
+    let right: f64 = 126.0;
+
+    let width = right - left;
+
+    // 32 - 126 inclusive
+    let mut buffer: Vec<u8> = (0..num_bytes).map(|_| 0).collect();
+    rng.fill_bytes(&mut buffer[..]);
+
+    buffer
+        .into_iter()
+        .map(|byte| byte as f64 / std::u8::MAX as f64)
+        .map(|ratio| width * ratio)
+        .map(|adjusted| (adjusted + left) as u8)
+        .collect()
 }
 
 /// # Parameters
@@ -146,4 +173,19 @@ pub fn mktemp_dir(prefix: &str, suffix: &str, out_dir: Option<&Path>) -> Result<
         .prefix(prefix)
         .suffix(suffix)
         .tempdir_in(out_dir.unwrap_or(env::temp_dir().as_path()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    pub fn drng_is_deterministic() {
+        let num_bytes = (0..10).map(|t| 1 << t);
+
+        num_bytes.for_each(|num_bytes| {
+            let rands: HashSet<_> = (0..4).map(|_| drng(num_bytes)).collect();
+            assert_eq!(1, rands.len());
+        });
+    }
 }
