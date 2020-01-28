@@ -3,11 +3,14 @@ use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use rayon::iter::ParallelBridge;
 use rayon::prelude::*;
+use rayon::prelude::*;
 use std::collections::HashSet;
 use std::env;
 use std::fmt::Debug;
 use std::io::Bytes;
 use std::io::Read;
+use std::ops::Deref;
+use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 use std::result::Result;
@@ -38,13 +41,24 @@ macro_rules! eprintln_then_none {
     }};
 }
 
-// random numbers in range [32, 126]
+/// Pure function that returns `num_bytes` number of bytes in the range [32, 126].
+///
+/// The pureness is achieved by using a random number generator with the same seed every time this
+/// function is called, and the output bytes are probably uniformly distributed.
+///
+/// # Parameters
+///
+/// 1. `num_bytes`: number of bytes to return
+///
+/// # Returns
+///
+/// `num_bytes` number of bytes in the range [32, 126].
 pub fn drng(num_bytes: u16) -> Vec<u8> {
     let seed: [u8; 32] = [0; 32];
     let mut rng = ChaCha8Rng::from_seed(seed);
 
-    let left: f64 = 32.0;
-    let right: f64 = 126.0;
+    let left = 32.0;
+    let right = 126.0;
 
     let width = right - left;
 
@@ -54,9 +68,9 @@ pub fn drng(num_bytes: u16) -> Vec<u8> {
 
     buffer
         .into_iter()
-        .map(|byte| byte as f64 / std::u8::MAX as f64)
-        .map(|ratio| width * ratio)
-        .map(|adjusted| (adjusted + left) as u8)
+        .map(|byte| byte as f64 / std::u8::MAX as f64)   // [0, 255] -> [0,1]
+        .map(|ratio| width * ratio)                      // [0, 1] -> [0, 94]
+        .map(|adjusted| (adjusted + left).round() as u8) // [0, 94] -> [32, 126]
         .collect()
 }
 
@@ -69,30 +83,30 @@ pub fn drng(num_bytes: u16) -> Vec<u8> {
 /// The "minimum" set of directory paths in a sense that calling `mkdir -p` on each element in the
 /// set results in the minimum number of `mkdir` calls in order to create every directory in the
 /// set.
-pub fn min_mkdir_set<'a, F, I>(dirs: &'a F) -> HashSet<PathBuf>
-where
-    F: Fn() -> I,
-    I: Iterator<Item = &'a Path>,
-{
-    dirs().fold(
-        dirs().map(Path::to_path_buf).collect::<HashSet<PathBuf>>(),
-        |mut acc, path| match acc.contains(path) {
-            true => {
-                // for each dir, remove all parent direcotries from acc
-                let mut current: &Path = path;
-                loop {
-                    match current.parent() {
-                        Some(parent) if acc.contains(parent) => {
-                            acc.remove(parent);
-                            current = parent;
-                        }
-                        _ => break acc,
-                    }
-                }
-            }
-            false => acc,
-        },
-    )
+pub fn min_mkdir_set(root: &Path) -> HashSet<PathBuf> {
+    // only select directories
+    let all_dirs: HashSet<_> = find(root)
+        .par_bridge()
+        .filter(Result::is_ok)
+        .map(Result::unwrap)
+        .filter(|path_buf| path_buf.is_dir())
+        .collect();
+
+    // all directories in `all_dirs` that contain child directories
+    let parent_dirs: HashSet<PathBuf> = all_dirs
+        .par_iter()
+        .flat_map(|path| {
+            path.ancestors()
+                .par_bridge()
+                .filter(move |ancestor| ancestor != path)
+                .map(Path::to_path_buf)
+        })
+        .collect();
+
+    all_dirs
+        .into_par_iter()
+        .filter(|dir| !parent_dirs.contains(dir))
+        .collect()
 }
 
 // trying to avoid bs buffer logic with this

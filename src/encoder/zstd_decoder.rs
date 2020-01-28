@@ -47,9 +47,9 @@ mod tests {
     #[test]
     fn parametrized() {
         (10..15)
-            .map(|shift_count| 1 << shift_count)
+            .map(|shl_by| 1 << shl_by)
             .par_bridge()
-            .map(|size| drng(size))
+            .map(drng)
             .for_each(|input_bytes| {
                 let result = compose_encoders!(
                     &input_bytes[..],

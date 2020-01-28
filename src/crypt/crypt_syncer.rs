@@ -33,9 +33,13 @@ pub struct CryptSyncer {
 impl<'a> CryptSyncer {
     /// 1. for the root cfile,
     pub fn sync(&self, out_dir: &Path, key_hash: &[u8]) -> Result<(), Error> {
+        let min_set = min_mkdir_set(&self.source);
+        println!("min_set {:#?}", min_set);
+
         let enc_basenames = basename_ciphertexts(&self.source, key_hash);
         let enc_paths = path_ciphertexts(&enc_basenames);
-        println!("enc_basenames {:#?}", enc_basenames);
+        drop(enc_basenames);
+
         println!("enc_paths {:#?}", enc_paths);
         todo!()
     }
