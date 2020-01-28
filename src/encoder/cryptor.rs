@@ -175,7 +175,7 @@ mod tests {
     macro_rules! encoder_pure {
         ( $fn_name:ident, $( $crypt_encoder:ident ),* ) => {
             fn $fn_name(unhashed_key: &str, data: &[u8]) -> Result<Vec<u8>, Error> {
-                let key_hash = hash_bytes_custom_iter(unhashed_key, HASH_NUM_ITER);
+                let key_hash = hash_custom(unhashed_key.as_bytes(), None, Some(HASH_NUM_ITER));
 
                 compose_encoders!(
                     data,
@@ -238,8 +238,11 @@ mod tests {
 
     #[test]
     fn identitity() -> Result<(), Error> {
-        let key_hash =
-            hash_bytes_custom_iter(&format!("soamkle!$@random key{}", line!()), HASH_NUM_ITER);
+        let key_hash = hash_custom(
+            format!("soamkle!$@random key{}", line!()).as_bytes(),
+            None,
+            Some(HASH_NUM_ITER),
+        );
 
         find(Path::new("./src/"))
             .par_bridge()

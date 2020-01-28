@@ -131,7 +131,9 @@ fn basename_ciphertexts(source: &Path, key_hash: &[u8]) -> HashMap<PathBuf, Stri
             Some(Some(basesname_str)) => {
                 let opt_parent = path_buf.parent().map(Path::to_str);
                 let parent_derived_hash = match opt_parent {
-                    Some(Some(parent_str)) if &path_buf != source => hash_bytes(&parent_str),
+                    Some(Some(parent_str)) if &path_buf != source => {
+                        hash_custom(key_hash, Some(parent_str.as_bytes()), Some(1))
+                    }
                     _ => Vec::from(key_hash),
                 };
 
@@ -159,8 +161,8 @@ fn modified(source: &Path) -> Result<SystemTime, Error> {
 }
 
 fn arena_name(source: &Path) -> Result<String, Error> {
-    let source_str = source.to_str().ok_or(err!("{:?}", source))?;
-    Ok(format!("{}.csync", hash_base64_pathsafe(source_str)?))
+    let src_bytes = source.to_str().ok_or(err!("{:?}", source))?.as_bytes();
+    Ok(format!("{}.csync", hash_base64_pathsafe(src_bytes)?))
 }
 
 #[cfg(test)]
@@ -169,10 +171,10 @@ mod tests {
 
     #[test]
     fn temp() {
-        let hash = hash_bytes_custom_iter("aoisjfk1", 16);
+        let key_hash = hash("aoisjfk1".as_bytes());
         let out_dir = mktemp_dir("", "", None).unwrap();
         let syncer = CryptSyncer::new(Path::new("src/")).unwrap();
-        syncer.sync(&out_dir.path(), &hash[..]);
+        syncer.sync(&out_dir.path(), &key_hash[..]);
         assert!(false);
     }
 }
